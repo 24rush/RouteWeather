@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../RouteScoringEngine/RouteScoringEngine.csproj" Id="88a0cd38-1dc4-4d1d-ba1a-fafebd71ac84" />
+  <Project Path="../routescoringservice/RouteScoringService.csproj" Id="2f1b8751-ae00-4aac-9159-919f17b05308" />
+  <Project Path="../Shared.Domain/Shared.Domain.csproj" Id="7d30e1a3-4384-4671-bbab-3d7c9a7860fa" />
+  <Project Path="RouteWeatherApi.csproj" />
+</Solution>

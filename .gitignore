@@ -1,0 +1,12 @@
+# Environment secrets
+.env
+
+# Node
+node_modules/
+
+# .NET
+bin/
+obj/
+
+*.vsidx
+**/.vs

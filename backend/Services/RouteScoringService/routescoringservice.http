@@ -1,0 +1,6 @@
+@routescoringservice_HostAddress = http://localhost:5194
+
+GET {{routescoringservice_HostAddress}}/routescoring/scoreroute?routeId=0b59563c-df4f-42ff-87fc-9cc7b24759cd
+Accept: application/json
+
+###
