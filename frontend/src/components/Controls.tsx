@@ -250,7 +250,7 @@ export default function Controls({
                   );
                 })}
               </Box>
-              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'row', gap: 1.5, alignItems: 'stretch' }}
+              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'row', gap: 1.5, alignItems: 'center' }}
               >
                 <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
                   30min
