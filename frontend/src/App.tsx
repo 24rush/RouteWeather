@@ -4,7 +4,7 @@ import MapViewer from './components/MapViewer';
 import Controls from './components/Controls';
 import type { RouteScoringDetails } from './types';
 import { api } from './api';
-import { getDistance, getBearing } from './utils';
+import { getBearing } from './utils';
 
 function App() {
   const [data, setData] = useState<RouteScoringDetails | null>(null);
@@ -47,47 +47,47 @@ function App() {
 
   const weatherCards = useMemo(() => {
     if (!data || !data.pointSequence || data.pointSequence.length === 0) return [];
-    
+
     const [startIndex, endIndex] = timeRange;
-    
+
     const today7am = new Date();
     today7am.setHours(7, 0, 0, 0);
     const baseTimeMs = today7am.getTime();
-    
+
     const stepMs = 30 * 60 * 1000;
-    
+
     const startTimeMs = baseTimeMs + startIndex * stepMs;
     const endTimeMs = baseTimeMs + endIndex * stepMs;
     const durationMs = endTimeMs - startTimeMs;
-    
+
     const pts = data.pointSequence;
     if (!pts || pts.length === 0) return [];
-    
+
     const coords: [number, number][] = [];
     for (let i = 0; i < pts.length; i++) {
       const ptStr = data.routePoints[pts[i]];
       if (!ptStr) {
-        coords.push([0,0]);
+        coords.push([0, 0]);
         continue;
       }
       const [lat, lng] = ptStr.split(',').map(Number);
       coords.push([lat, lng]);
     }
-    
+
     const cards = [];
     const seenTimes = new Set<string>();
     let lastBearing: number | null = null;
-    
+
     for (let i = 0; i < pts.length; i++) {
       const ptId = pts[i];
       const fraction = i / Math.max(1, pts.length - 1);
       const arrivalTimeMs = startTimeMs + fraction * durationMs;
-      
+
       const pointForecasts = data.forecastAtRoutePoints[ptId]?.forecastAtIntervals;
       let closestTimeIso = '';
       let closestForecast = null;
       let minDiff = Infinity;
-      
+
       if (pointForecasts) {
         for (const [timeIso, forecast] of Object.entries(pointForecasts)) {
           let tMs = 0;
@@ -107,16 +107,16 @@ function App() {
           }
         }
       }
-      
+
       if (closestForecast && !seenTimes.has(closestTimeIso)) {
         seenTimes.add(closestTimeIso);
-        
+
         let bearing: number | null = null;
         for (let j = i + 1; j < Math.min(i + 5, pts.length); j++) {
-           if (coords[j][0] !== coords[i][0] || coords[j][1] !== coords[i][1]) {
-              bearing = getBearing(coords[i][0], coords[i][1], coords[j][0], coords[j][1]);
-              break;
-           }
+          if (coords[j][0] !== coords[i][0] || coords[j][1] !== coords[i][1]) {
+            bearing = getBearing(coords[i][0], coords[i][1], coords[j][0], coords[j][1]);
+            break;
+          }
         }
         if (bearing === null && lastBearing !== null) {
           bearing = lastBearing;
@@ -124,7 +124,7 @@ function App() {
         if (bearing !== null) {
           lastBearing = bearing;
         }
-        
+
         cards.push({
           time: closestTimeIso,
           forecast: closestForecast,
@@ -134,7 +134,7 @@ function App() {
         });
       }
     }
-    
+
     return cards;
   }, [data, timeRange]);
 

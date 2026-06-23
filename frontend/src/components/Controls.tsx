@@ -80,7 +80,7 @@ export default function Controls({
   }
 
   const handleSliderChange = (
-    event: Event,
+    _event: Event,
     newValue: number | number[],
     activeThumb: number,
   ) => {

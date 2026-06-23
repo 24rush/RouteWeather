@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, Tooltip, useMap } from 'react-leaflet';
 import type { RouteScoringDetails } from '../types';
-import { getBearing, getWeatherColor } from '../utils';
+import { getWeatherColor } from '../utils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -77,7 +77,7 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex }: Map
 
   // Extract chevrons for the route
   const routeChevrons = useMemo(() => {
-    const chevrons = [];
+    const chevrons: any[] = [];
     if (!routePositions || routePositions.length < 2) return chevrons;
 
     const step = Math.max(1, Math.floor(routePositions.length / 20)); // roughly 20 chevrons
