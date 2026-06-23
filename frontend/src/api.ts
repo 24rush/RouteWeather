@@ -12,7 +12,7 @@ export const api = {
   uploadGpx: async (file: File): Promise<any> => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await axios.post('/api/gpx/uploadAnon', formData, {
+    const response = await axios.post('/api/gpx/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
