@@ -138,7 +138,6 @@ export default function Controls({
         p: 2,
         display: 'flex',
         flexDirection: 'column',
-        gap: 1.5,
         backdropFilter: 'blur(10px)',
         backgroundColor: 'rgba(30, 30, 30, 0.85)',
         borderRadius: 3,
@@ -151,9 +150,9 @@ export default function Controls({
           variant="contained"
           startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUploadIcon />}
           disabled={isUploading}
-          sx={{ mt: 1, py: 0.5, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+          sx={{ mb: 1, py: 0.5, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
         >
-          {isUploading ? 'Uploading...' : 'Upload GPX Route'}
+          {isUploading ? 'Uploading...' : 'Upload .GPX'}
           <input
             type="file"
             hidden
@@ -164,27 +163,7 @@ export default function Controls({
       </Box>
 
       {hasData && (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 1, pt: 1.5, borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                Start & Duration
-              </Typography>
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {startTimeDisplay} (Dur: {durationDisplay})
-              </Typography>
-            </Box>
-            <Slider
-              value={timeRange}
-              onChange={handleSliderChange}
-              step={1}
-              min={0}
-              max={maxSliderSteps}
-              disableSwap
-              valueLabelDisplay="off"
-            />
-          </Box>
-
+        <Box sx={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
           {weatherCards.length > 0 && (
             <>
               <Box
@@ -250,7 +229,7 @@ export default function Controls({
                   );
                 })}
               </Box>
-              <Box sx={{ mt: 1, display: 'flex', flexDirection: 'row', gap: 1.5, alignItems: 'center' }}
+              <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1.5, alignItems: 'center' }}
               >
                 <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
                   30min
@@ -285,6 +264,28 @@ export default function Controls({
               </Box>
             </>
           )}
+
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
+                Start & Duration
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {startTimeDisplay} (Dur: {durationDisplay})
+              </Typography>
+            </Box>
+            <Slider
+              sx={{ ml: 1 }}
+              value={timeRange}
+              onChange={handleSliderChange}
+              step={1}
+              min={0}
+              max={maxSliderSteps}
+              disableSwap
+              valueLabelDisplay="off"
+            />
+          </Box>
+
         </Box>
       )}
     </Paper>
