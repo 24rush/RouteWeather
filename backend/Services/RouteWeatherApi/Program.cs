@@ -5,7 +5,6 @@ using route_scoring_engine;
 using Shared.Domain.Converters;
 using Shared.Domain.Persistance;
 using Shared.Domain.Persistance.Repositories;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,7 +27,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins("http://localhost:5173", "https://zealous-plant-0db608010.7.azurestaticapps.net")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -46,10 +45,21 @@ builder.Services.AddDbContext<RouteWeatherDbContext>(options =>
 {
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("Postgres"),
-        o => o.UseNetTopologySuite());
+        o =>
+        {
+            o.UseNetTopologySuite();
+            o.EnableRetryOnFailure(maxRetryCount: 5, maxRetryDelay: TimeSpan.FromSeconds(60), errorCodesToAdd: null);
+        });
 });
 
 var app = builder.Build();
+
+// Automatically run EF Core migrations on startup
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<Shared.Domain.Persistance.RouteWeatherDbContext>();
+    db.Database.Migrate();
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

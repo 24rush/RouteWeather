@@ -30,12 +30,12 @@ namespace route_scoring_engine
         }
 
         private async Task<List<PointForecastEntity>?> getWeatherDataForRoute(GPXTrackEntity route)
-        {                        
+        {
             if (DateTime.UtcNow.Subtract(route.ForecastGenerationTime).TotalHours >= 3)
-            {                
+            {
                 await _weatherRepo.RemoveForecastForRouteID(route.Id);
 
-                var pointsForWeather = route.SampledPoints.Coordinates.Select(c => new Point(c) { SRID = 4326 }).ToArray();                                     
+                var pointsForWeather = route.SampledPoints.Coordinates.Select(c => new Point(c) { SRID = 4326 }).ToArray();
 
                 var forecast = await _openMeteoClient.GetForecastAsync(pointsForWeather);
 
@@ -46,18 +46,21 @@ namespace route_scoring_engine
                 }
 
                 route.ForecastGenerationTime = DateTime.UtcNow;
-                await _gpxRepo.SaveChangesAsync();
 
                 // Update DB with latest weather data                
                 foreach (var pointForecast in forecast)
-                {                    
+                {
                     _weatherRepo.AddForecastAtPoint(PointForecastEntity.FromOpenMeteoResponse(pointForecast, route.Id));
                 }
 
-                await _weatherRepo.SaveChangesAsync();
+                if (route.Id != Guid.Empty)
+                {
+                    await _gpxRepo.SaveChangesAsync();
+                    await _weatherRepo.SaveChangesAsync();
+                }
             }
-                        
-            return await _weatherRepo.GetForecastForRouteID(route.Id); ;
+
+            return route.Id != Guid.Empty ? await _weatherRepo.GetForecastForRouteID(route.Id) : _weatherRepo.GetPendingForecast();
         }
 
         private double interpolateValues(double a, double b, double distance)
@@ -199,7 +202,7 @@ namespace route_scoring_engine
 
                 // Get weather data at 30 minute intervals
                 for (var currStartTime = UserPreferences.prefStartTime;
-                    currStartTime <= UserPreferences.prefMaxStartTime.AddMinutes(MINUTES_BETWEEN_WEATHER_SAMPLES * route.SampledPoints.Coordinates.Length);
+                    currStartTime <= UserPreferences.prefStartTime.AddHours(23);
                     currStartTime = currStartTime.AddMinutes(MINUTES_BETWEEN_WEATHER_SAMPLES))
                 {
                     var forecastAtTimeStamp = getForecastAtTimestamp(closestWeatherDataPoint, currStartTime);

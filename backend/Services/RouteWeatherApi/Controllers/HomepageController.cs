@@ -17,9 +17,9 @@ namespace RouteWeatherApi.Controllers
         }
 
         [HttpGet()]
-        public async Task<RouteScoringDetails?> Get()
+        public async Task<RouteScoringDetails?> Get(Guid id)
         {
-            return await _scoringEngine.ScoreRouteToday(new Guid("019eee9b-4cce-70f7-a398-081b47c0df1c"));
+            return await _scoringEngine.ScoreRouteToday(id);
         }
     }
 }

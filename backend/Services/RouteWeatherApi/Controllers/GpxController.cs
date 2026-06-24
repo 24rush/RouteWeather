@@ -61,12 +61,15 @@ namespace api.Controllers
             var gpxTrack = await _service.CreateGPXTrack(file.FileName, points);
             await _service.SaveGpxTrack(gpxTrack);
 
+            Console.WriteLine($"Created route: {gpxTrack.Id}");
+
             _ = _queue.QueueAsync(gpxTrack.Id);
 
             return Ok(new
             {
                 fileName = file.FileName,
                 sizeBytes = file.Length,
+                id = gpxTrack.Id
             });
         }
 

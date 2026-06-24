@@ -91,5 +91,13 @@ namespace Shared.Domain.Persistance.Repositories
         {
             await _context.PointForecast.Where(x => x.RouteId == routeId).ExecuteDeleteAsync();
         }
+
+        public List<PointForecastEntity> GetPendingForecast()
+        {
+            var localForecast = _context.PointForecast.ToList();
+            localForecast.ForEach(r => generateDateTimeLocals(r.Hourly));            
+
+            return localForecast;
+        }
     }
 }
