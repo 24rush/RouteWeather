@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import MapViewer from './components/MapViewer';
 import Controls from './components/Controls';
 import type { RouteScoringDetails } from './types';
@@ -56,20 +56,20 @@ function App() {
 
   const submitDrawnRoute = async (points: [number, number][]) => {
     if (points.length < 2) return;
-    
+
     // Dump GPS coordinates as requested
     console.log("=== Drawn GPS Coordinates ===");
     console.log(JSON.stringify(points.map(p => ({ lat: p[0], lng: p[1] })), null, 2));
-    
+
     setIsUploading(true);
-    
+
     // Generate simple GPX XML
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="RouteWeather">\n<trk>\n<name>Drawn Route</name>\n<trkseg>\n`;
     for (const pt of points) {
       gpx += `<trkpt lat="${pt[0]}" lon="${pt[1]}"><ele>0</ele></trkpt>\n`;
     }
     gpx += `</trkseg>\n</trk>\n</gpx>`;
-    
+
     const file = new File([gpx], "drawn_route.gpx", { type: "application/gpx+xml" });
     try {
       const homepageData = await api.uploadGpx(file);
@@ -196,10 +196,10 @@ function App() {
 
       {/* Map Area */}
       <Box sx={{ flexGrow: 1, position: 'relative' }}>
-        <MapViewer 
-          data={data} 
-          weatherCards={weatherCards} 
-          selectedCardIndex={selectedCardIndex} 
+        <MapViewer
+          data={data}
+          weatherCards={weatherCards}
+          selectedCardIndex={selectedCardIndex}
           isDrawingMode={isDrawingMode}
           drawnPoints={drawnPoints}
           setDrawnPoints={setDrawnPoints}
