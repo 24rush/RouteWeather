@@ -141,19 +141,52 @@ function DrawingHandler({ isDrawingMode, setDrawnPoints }: { isDrawingMode: bool
     map.on('mousemove', handleMouseMove);
     map.on('mouseup', handleMouseUp);
 
-    // Fallbacks for touch devices
-    map.on('touchstart', handleMouseDown);
-    map.on('touchmove', handleMouseMove);
-    map.on('touchend', handleMouseUp);
+    // Robust touch handling via direct DOM events
+    const container = map.getContainer();
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (!isDrawingMode) return;
+      e.preventDefault(); // Stop browser viewport scrolling
+      if (e.touches && e.touches.length > 0) {
+        const latlng = map.mouseEventToLatLng(e.touches[0] as any);
+        if (latlng) {
+          isDrawingRef.current = true;
+          setDrawnPoints((prev) => [...prev, [latlng.lat, latlng.lng]]);
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDrawingMode || !isDrawingRef.current) return;
+      e.preventDefault();
+      if (e.touches && e.touches.length > 0) {
+        const latlng = map.mouseEventToLatLng(e.touches[0] as any);
+        if (latlng) {
+          setDrawnPoints((prev) => [...prev, [latlng.lat, latlng.lng]]);
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (!isDrawingMode) return;
+      isDrawingRef.current = false;
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: false });
+    container.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
     return () => {
       map.off('contextmenu', handleContextMenu);
       map.off('mousedown', handleMouseDown);
       map.off('mousemove', handleMouseMove);
       map.off('mouseup', handleMouseUp);
-      map.off('touchstart', handleMouseDown);
-      map.off('touchmove', handleMouseMove);
-      map.off('touchend', handleMouseUp);
+      
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, [isDrawingMode, map, setDrawnPoints]);
 
