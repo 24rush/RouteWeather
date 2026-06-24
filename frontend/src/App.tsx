@@ -12,21 +12,29 @@ function App() {
   const [maxSliderSteps, setMaxSliderSteps] = useState(96);
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [drawnPoints, setDrawnPoints] = useState<[number, number][]>([]);
+
+  const fetchDemoData = async () => {
+    try {
+      setIsDrawingMode(false);
+      setDrawnPoints([]); // Clear the red drawing line from map
+      setIsUploading(true);
+      // Pass the specific GUID for the demo track
+      const homepageData = await api.getHomepageData("019ef814-794e-767b-bdba-a8ab31430cdc");
+      setData(homepageData);
+
+      // Set default time to 7am today, max slider to midnight (17 hours = 34 steps)
+      setMaxSliderSteps(34);
+      setTimeRange([0, 4]); // Default 2 hours duration
+    } catch (error) {
+      console.error("Error fetching demo data:", error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchDemoData = async () => {
-      try {
-        // Pass the specific GUID for the demo track
-        const homepageData = await api.getHomepageData("019ef898-9951-73f3-8389-097190955155");
-        setData(homepageData);
-
-        // Set default time to 7am today, max slider to midnight (17 hours = 34 steps)
-        setMaxSliderSteps(34);
-        setTimeRange([0, 4]); // Default 2 hours duration
-      } catch (error) {
-        console.error("Error fetching demo data:", error);
-      }
-    };
     fetchDemoData();
   }, []);
 
@@ -45,6 +53,50 @@ function App() {
       setIsUploading(false);
     }
   }, []);
+
+  const submitDrawnRoute = async (points: [number, number][]) => {
+    if (points.length < 2) return;
+    
+    // Dump GPS coordinates as requested
+    console.log("=== Drawn GPS Coordinates ===");
+    console.log(JSON.stringify(points.map(p => ({ lat: p[0], lng: p[1] })), null, 2));
+    
+    setIsUploading(true);
+    
+    // Generate simple GPX XML
+    let gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="RouteWeather">\n<trk>\n<name>Drawn Route</name>\n<trkseg>\n`;
+    for (const pt of points) {
+      gpx += `<trkpt lat="${pt[0]}" lon="${pt[1]}"><ele>0</ele></trkpt>\n`;
+    }
+    gpx += `</trkseg>\n</trk>\n</gpx>`;
+    
+    const file = new File([gpx], "drawn_route.gpx", { type: "application/gpx+xml" });
+    try {
+      const homepageData = await api.uploadGpx(file);
+      setData(homepageData);
+      setMaxSliderSteps(34);
+      setTimeRange([0, 4]);
+    } catch (error) {
+      console.error("Error uploading drawn route:", error);
+      alert("Failed to upload drawn route.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleToggleDrawingMode = (enabled: boolean) => {
+    setIsDrawingMode(enabled);
+    if (!enabled) {
+      if (drawnPoints.length >= 2) {
+        submitDrawnRoute(drawnPoints);
+      }
+      setDrawnPoints([]); // Immediately clear the red line when finishing/canceling
+    } else {
+      // Remove the current track and clear points when entering drawing mode
+      setData(null);
+      setDrawnPoints([]);
+    }
+  };
 
   const weatherCards = useMemo(() => {
     if (!data || !data.pointSequence || data.pointSequence.length === 0) return [];
@@ -144,7 +196,14 @@ function App() {
 
       {/* Map Area */}
       <Box sx={{ flexGrow: 1, position: 'relative' }}>
-        <MapViewer data={data} weatherCards={weatherCards} selectedCardIndex={selectedCardIndex} />
+        <MapViewer 
+          data={data} 
+          weatherCards={weatherCards} 
+          selectedCardIndex={selectedCardIndex} 
+          isDrawingMode={isDrawingMode}
+          drawnPoints={drawnPoints}
+          setDrawnPoints={setDrawnPoints}
+        />
       </Box>
 
       {/* Floating Controls Overlay */}
@@ -160,6 +219,9 @@ function App() {
           selectedCardIndex={selectedCardIndex}
           onCardIndexChange={setSelectedCardIndex}
           weatherCards={weatherCards}
+          isDrawingMode={isDrawingMode}
+          onToggleDrawingMode={handleToggleDrawingMode}
+          onClearRoute={fetchDemoData}
         />
       </Box>
 

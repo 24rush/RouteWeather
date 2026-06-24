@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Box, Button, Slider, Typography, Paper, CircularProgress } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails } from '../types';
 import { getWeatherColor } from '../utils';
 
@@ -15,6 +16,9 @@ interface ControlsProps {
   selectedCardIndex: number;
   onCardIndexChange: (index: number) => void;
   weatherCards: { time: string; forecast: any; bearing: number | null; lat: number; lng: number }[];
+  isDrawingMode: boolean;
+  onToggleDrawingMode: (enabled: boolean) => void;
+  onClearRoute: () => void;
 }
 
 export default function Controls({
@@ -27,7 +31,10 @@ export default function Controls({
   setMaxSliderSteps,
   selectedCardIndex,
   onCardIndexChange,
-  weatherCards
+  weatherCards,
+  isDrawingMode,
+  onToggleDrawingMode,
+  onClearRoute
 }: ControlsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -145,21 +152,61 @@ export default function Controls({
       }}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-        <Button
-          component="label"
-          variant="contained"
-          startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUploadIcon />}
-          disabled={isUploading}
-          sx={{ mb: 1, py: 0.5, borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
-        >
-          {isUploading ? 'Uploading...' : 'Upload .GPX'}
-          <input
-            type="file"
-            hidden
-            accept=".gpx"
-            onChange={handleFileChange}
-          />
-        </Button>
+        <Box sx={{ display: 'flex', gap: 0.5 }}>
+          <Button
+            component="label"
+            variant="contained"
+            disabled={isUploading || isDrawingMode}
+            startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUploadIcon />}
+            sx={{
+              flex: 1,
+              height: '32px',
+              borderRadius: 2,
+              textTransform: 'none',
+              backgroundColor: 'rgba(25, 118, 210, 0.9)',
+              '&:hover': { backgroundColor: 'rgba(21, 101, 192, 1)' },
+              fontWeight: 600,
+            }}
+          >
+            {isUploading ? 'Uploading...' : 'Upload GPX'}
+            <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
+          </Button>
+          <Button
+            variant="contained"
+            color={isDrawingMode ? "secondary" : "primary"}
+            onClick={() => onToggleDrawingMode(!isDrawingMode)}
+            disabled={isUploading}
+            sx={{
+              flex: 1,
+              height: '32px',
+              borderRadius: 2,
+              textTransform: 'none',
+              backgroundColor: isDrawingMode ? undefined : 'rgba(25, 118, 210, 0.9)',
+              '&:hover': { backgroundColor: isDrawingMode ? undefined : 'rgba(21, 101, 192, 1)' },
+              fontWeight: 600,
+            }}
+          >
+            {isDrawingMode ? 'Finish' : 'Draw Route'}
+          </Button>
+          {isDrawingMode && (
+            <Button
+              variant="contained"
+              color="error"
+              onClick={onClearRoute}
+              disabled={isUploading}
+              sx={{
+                minWidth: '40px',
+                height: '32px',
+                borderRadius: 2,
+                backgroundColor: 'rgba(211, 47, 47, 0.9)',
+                '&:hover': { backgroundColor: 'rgba(198, 40, 40, 1)' },
+              }}
+              title="Clear Route and Load Demo"
+            >
+              <DeleteOutlineIcon />
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {hasData && (
@@ -271,7 +318,7 @@ export default function Controls({
                 Start & Duration
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {startTimeDisplay} (Dur: {durationDisplay})
+                {startTimeDisplay} ({(data?.distance ?? data?.Distance ?? 0).toFixed(1)}km, {durationDisplay})
               </Typography>
             </Box>
             <Slider

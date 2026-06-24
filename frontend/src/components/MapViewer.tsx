@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Polyline, Marker, Tooltip, useMap } from 'react-leaflet';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { MapContainer, TileLayer, Polyline, Marker, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { RouteScoringDetails } from '../types';
 import { getWeatherColor } from '../utils';
 import L from 'leaflet';
@@ -17,6 +17,9 @@ interface MapViewerProps {
   data: RouteScoringDetails | null;
   weatherCards: { time: string; forecast: any; lat: number; lng: number; bearing: number | null }[];
   selectedCardIndex: number;
+  isDrawingMode: boolean;
+  drawnPoints: [number, number][];
+  setDrawnPoints: React.Dispatch<React.SetStateAction<[number, number][]>>;
 }
 
 // Dynamic icon for weather markers with wind direction
@@ -62,7 +65,102 @@ function BoundsFitter({ positions }: { positions: [number, number][] }) {
   return null;
 }
 
-export default function MapViewer({ data, weatherCards, selectedCardIndex }: MapViewerProps) {
+function DrawingHandler({ isDrawingMode, setDrawnPoints }: { isDrawingMode: boolean, setDrawnPoints: React.Dispatch<React.SetStateAction<[number, number][]>> }) {
+  const map = useMap();
+  const isDrawingRef = useRef(false);
+
+  useEffect(() => {
+    if (isDrawingMode) {
+      map.dragging.disable();
+      map.getContainer().style.cursor = 'crosshair';
+    } else {
+      map.dragging.enable();
+      map.getContainer().style.cursor = '';
+      isDrawingRef.current = false;
+    }
+
+    const getLatLng = (e: any) => {
+      if (e.latlng) return e.latlng;
+      if (e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length > 0) {
+        return map.mouseEventToLatLng(e.originalEvent.touches[0]);
+      }
+      return null;
+    };
+
+    let isRightDragging = false;
+    let lastMousePos = { x: 0, y: 0 };
+
+    const handleContextMenu = (e: any) => {
+      if (isDrawingMode && e.originalEvent) {
+        e.originalEvent.preventDefault();
+      }
+    };
+
+    const handleMouseDown = (e: any) => {
+      if (!isDrawingMode) return;
+      if (e.originalEvent && e.originalEvent.button === 2) {
+        isRightDragging = true;
+        lastMousePos = { x: e.originalEvent.clientX, y: e.originalEvent.clientY };
+        return;
+      }
+      const latlng = getLatLng(e);
+      if (!latlng) return;
+      isDrawingRef.current = true;
+      // Append to the existing array so the user can lift the mouse and resume drawing
+      setDrawnPoints((prev) => [...prev, [latlng.lat, latlng.lng]]);
+    };
+
+    const handleMouseMove = (e: any) => {
+      if (!isDrawingMode) return;
+
+      if (isRightDragging && e.originalEvent) {
+        const dx = e.originalEvent.clientX - lastMousePos.x;
+        const dy = e.originalEvent.clientY - lastMousePos.y;
+        map.panBy([-dx, -dy], { animate: false });
+        lastMousePos = { x: e.originalEvent.clientX, y: e.originalEvent.clientY };
+        return;
+      }
+
+      if (!isDrawingRef.current) return;
+      const latlng = getLatLng(e);
+      if (!latlng) return;
+      setDrawnPoints((prev) => [...prev, [latlng.lat, latlng.lng]]);
+    };
+
+    const handleMouseUp = (e: any) => {
+      if (!isDrawingMode) return;
+      if (e.originalEvent && e.originalEvent.button === 2) {
+        isRightDragging = false;
+        return;
+      }
+      isDrawingRef.current = false;
+    };
+
+    map.on('contextmenu', handleContextMenu);
+    map.on('mousedown', handleMouseDown);
+    map.on('mousemove', handleMouseMove);
+    map.on('mouseup', handleMouseUp);
+
+    // Fallbacks for touch devices
+    map.on('touchstart', handleMouseDown);
+    map.on('touchmove', handleMouseMove);
+    map.on('touchend', handleMouseUp);
+
+    return () => {
+      map.off('contextmenu', handleContextMenu);
+      map.off('mousedown', handleMouseDown);
+      map.off('mousemove', handleMouseMove);
+      map.off('mouseup', handleMouseUp);
+      map.off('touchstart', handleMouseDown);
+      map.off('touchmove', handleMouseMove);
+      map.off('touchend', handleMouseUp);
+    };
+  }, [isDrawingMode, map, setDrawnPoints]);
+
+  return null;
+}
+
+export default function MapViewer({ data, weatherCards, selectedCardIndex, isDrawingMode, drawnPoints, setDrawnPoints }: MapViewerProps) {
   // Extract route positions from trackPoints
   const routePositions = useMemo(() => {
     const positions: [number, number][] = [];
@@ -122,9 +220,17 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex }: Map
         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
       />
 
+      <DrawingHandler isDrawingMode={isDrawingMode} setDrawnPoints={setDrawnPoints} />
+
       <BoundsFitter positions={routePositions} />
 
-      <Polyline positions={routePositions} pathOptions={{ color: '#1976d2', weight: 4, opacity: 0.8 }} />
+      {drawnPoints.length > 0 && (
+        <Polyline positions={drawnPoints} pathOptions={{ color: '#ff4444', weight: 4, dashArray: '8, 8' }} />
+      )}
+
+      {routePositions.length > 0 && (
+        <Polyline positions={routePositions} pathOptions={{ color: '#1976d2', weight: 4, opacity: 0.8 }} />
+      )}
 
       {routeChevrons.map((c, index) => (
         <Marker key={`chevron-${index}`} position={[c.lat, c.lng]} icon={createChevronIcon(c.rotation)} interactive={false} keyboard={false} />
