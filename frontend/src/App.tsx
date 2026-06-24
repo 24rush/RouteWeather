@@ -21,7 +21,7 @@ function App() {
       setDrawnPoints([]); // Clear the red drawing line from map
       setIsUploading(true);
       // Pass the specific GUID for the demo track
-      const homepageData = await api.getHomepageData("019ef814-794e-767b-bdba-a8ab31430cdc");
+      const homepageData = await api.getHomepageData("019ef898-9951-73f3-8389-097190955155");
       setData(homepageData);
 
       // Set default time to 7am today, max slider to midnight (17 hours = 34 steps)
