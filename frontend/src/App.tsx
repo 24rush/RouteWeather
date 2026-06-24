@@ -17,7 +17,7 @@ function App() {
     const fetchDemoData = async () => {
       try {
         // Pass the specific GUID for the demo track
-        const homepageData = await api.getHomepageData("019ef7f8-c11f-7fff-88fc-f9454e1a71e5");
+        const homepageData = await api.getHomepageData("019ef898-9951-73f3-8389-097190955155");
         setData(homepageData);
 
         // Set default time to 7am today, max slider to midnight (17 hours = 34 steps)
