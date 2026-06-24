@@ -14,7 +14,7 @@ L.Icon.Default.mergeOptions({
 });
 
 interface MapViewerProps {
-  data: RouteScoringDetails;
+  data: RouteScoringDetails | null;
   weatherCards: { time: string; forecast: any; lat: number; lng: number; bearing: number | null }[];
   selectedCardIndex: number;
 }
@@ -58,6 +58,7 @@ function BoundsFitter({ positions }: { positions: [number, number][] }) {
       map.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [map, positions]);
+
   return null;
 }
 
@@ -65,7 +66,7 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex }: Map
   // Extract route positions from trackPoints
   const routePositions = useMemo(() => {
     const positions: [number, number][] = [];
-    if (!data.trackPoints) return positions;
+    if (!data || !data.trackPoints) return positions;
 
     for (const pt of data.trackPoints) {
       if (pt && typeof pt.lat === 'number' && typeof pt.lng === 'number') {
@@ -109,15 +110,10 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex }: Map
     return chevrons;
   }, [routePositions]);
 
-
-  if (!routePositions.length) {
-    return null;
-  }
-
   return (
     <MapContainer
-      center={routePositions[0]}
-      zoom={13}
+      center={routePositions.length > 0 ? routePositions[0] : [45, 25]}
+      zoom={4}
       style={{ height: '100%', width: '100%', zIndex: 0 }}
       zoomControl={false}
     >

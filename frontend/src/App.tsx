@@ -144,15 +144,7 @@ function App() {
 
       {/* Map Area */}
       <Box sx={{ flexGrow: 1, position: 'relative' }}>
-        {data ? (
-          <MapViewer data={data} weatherCards={weatherCards} selectedCardIndex={selectedCardIndex} />
-        ) : (
-          <Box sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e1e1e' }}>
-            <Typography variant="h5" color="text.secondary">
-              Upload a GPX file to display the map
-            </Typography>
-          </Box>
-        )}
+        <MapViewer data={data} weatherCards={weatherCards} selectedCardIndex={selectedCardIndex} />
       </Box>
 
       {/* Floating Controls Overlay */}
