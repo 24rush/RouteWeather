@@ -5,6 +5,9 @@ import type { RouteScoringDetails } from './types';
 // For local development, if VITE_API_URL is undefined, it uses relative paths which Vite proxies!
 if (import.meta.env.VITE_API_URL) {
   axios.defaults.baseURL = import.meta.env.VITE_API_URL;
+} else {
+  // Hardcoded for testing the production API from local UI
+  axios.defaults.baseURL = "https://routeweather-api.politecoast-991ad491.centralus.azurecontainerapps.io";
 }
 
 // Let's create an interface to type our API responses
@@ -20,8 +23,8 @@ export const api = {
     return response.data;
   },
 
-  getHomepageData: async (): Promise<RouteScoringDetails> => {
-    const response = await axios.get('/api/homepage');
+  getHomepageData: async (id: string): Promise<RouteScoringDetails> => {
+    const response = await axios.get(`/api/homepage?id=${id}`);
     return response.data;
   },
 };
