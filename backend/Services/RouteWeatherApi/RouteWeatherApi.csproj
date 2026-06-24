@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -6,7 +6,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>6e71cca2-3982-4e2e-80eb-6e9bc28f8816</UserSecretsId>
 		<DockerDefaultTargetOS>Windows</DockerDefaultTargetOS>
-		<DockerfileContext>.</DockerfileContext>
+		<DockerfileContext>..\..\</DockerfileContext>
 	</PropertyGroup>
 
 	<ItemGroup>
