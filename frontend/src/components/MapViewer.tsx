@@ -167,7 +167,7 @@ function DrawingHandler({ isDrawingMode, setDrawnPoints }: { isDrawingMode: bool
       }
     };
 
-    const handleTouchEnd = (e: TouchEvent) => {
+    const handleTouchEnd = (_e: TouchEvent) => {
       if (!isDrawingMode) return;
       isDrawingRef.current = false;
     };
@@ -182,7 +182,7 @@ function DrawingHandler({ isDrawingMode, setDrawnPoints }: { isDrawingMode: bool
       map.off('mousedown', handleMouseDown);
       map.off('mousemove', handleMouseMove);
       map.off('mouseup', handleMouseUp);
-      
+
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
