@@ -22,23 +22,29 @@ interface MapViewerProps {
   setDrawnPoints: React.Dispatch<React.SetStateAction<[number, number][]>>;
 }
 
-// Dynamic icon for weather markers with wind direction
-const createWeatherIcon = (windDirection: number) => new L.DivIcon({
-  html: `
-    <div style="position: relative; width: 84px; height: 84px; display: flex; align-items: center; justify-content: center;">
-      <div style="position: absolute; background-color: #195c96ff; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); z-index: 2;"></div>
-      <div style="position: absolute; transform: rotate(${windDirection}deg); width: 100%; height: 100%; display: flex; justify-content: center; z-index: 1;">
-    <svg width="24" height="84" viewBox="0 0 24 84" fill="none" stroke="#c0c0c0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(255,255,255,0.8));">
-      <line x1="12" y1="2" x2="12" y2="82"></line>
-      <polyline points="7.256 21.208 11.944 2.09 16.633 21.208" style="" stroke-width="3"></polyline>
-    </svg>
+const createWeatherIcon = (windDirection: number, windSpeed: number, maxWindSpeed: number) => {
+  const minHeight = 24;
+  const maxHeight = 84;
+  const rawHeight = maxWindSpeed > 0 ? (windSpeed / maxWindSpeed) * maxHeight : 0;
+  const height = Math.max(minHeight, Math.round(rawHeight));
+
+  return new L.DivIcon({
+    html: `
+      <div style="position: relative; width: 84px; height: 84px; display: flex; align-items: center; justify-content: center;">
+        <div style="position: absolute; background-color: #195c96ff; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); z-index: 2;"></div>
+        <div style="position: absolute; transform: rotate(${windDirection}deg); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1;">
+      <svg width="24" height="${height}" viewBox="0 0 24 ${height}" fill="none" stroke="#c0c0c0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(255,255,255,0.8));">
+        <line x1="12" y1="2" x2="12" y2="${Math.max(2, height - 2)}"></line>
+        <polyline points="7.256 21.208 11.944 2.09 16.633 21.208" style="" stroke-width="3"></polyline>
+      </svg>
+        </div>
       </div>
-    </div>
-  `,
-  className: 'marker-icon',
-  iconSize: [84, 84],
-  iconAnchor: [42, 42]
-});
+    `,
+    className: 'marker-icon',
+    iconSize: [84, 84],
+    iconAnchor: [42, 42]
+  });
+};
 
 const createChevronIcon = (rotation: number) => new L.DivIcon({
   html: `
@@ -194,6 +200,16 @@ function DrawingHandler({ isDrawingMode, setDrawnPoints }: { isDrawingMode: bool
 }
 
 export default function MapViewer({ data, weatherCards, selectedCardIndex, isDrawingMode, drawnPoints, setDrawnPoints }: MapViewerProps) {
+  const maxWindSpeed = useMemo(() => {
+    let max = 0;
+    for (const card of weatherCards) {
+      if (card.forecast && card.forecast.windSpeed10m > max) {
+        max = card.forecast.windSpeed10m;
+      }
+    }
+    return max;
+  }, [weatherCards]);
+
   // Extract route positions from trackPoints
   const routePositions = useMemo(() => {
     const positions: [number, number][] = [];
@@ -271,7 +287,7 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
 
       {weatherCards.map((m, index) => (
         m.forecast && (
-          <Marker key={index} position={[m.lat, m.lng]} icon={createWeatherIcon(m.forecast.windDirection10m)} zIndexOffset={index === selectedCardIndex ? 1000 : 0}>
+          <Marker key={index} position={[m.lat, m.lng]} icon={createWeatherIcon(m.forecast.windDirection10m, m.forecast.windSpeed10m, maxWindSpeed)} zIndexOffset={index === selectedCardIndex ? 1000 : 0}>
             {index === selectedCardIndex && (
               <Tooltip direction="top" offset={[0, -10]} className="weather-tooltip" permanent={true}>
                 <div style={{
@@ -281,8 +297,8 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
                   padding: '4px 6px',
                   alignItems: 'center',
                   backgroundColor: getWeatherColor(m.forecast, true, m.bearing),
-                  borderRadius: '6px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                  borderRadius: '4px',
+                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
                   border: '1px solid rgba(255,255,255,0.2)',
                   color: 'rgba(23, 23, 23, 1)',
                 }}>

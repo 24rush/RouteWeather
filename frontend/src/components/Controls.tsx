@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Box, Button, Slider, Typography, Paper, CircularProgress } from '@mui/material';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails } from '../types';
 import { getWeatherColor } from '../utils';
+import { FileUploadOutlined, GestureOutlined } from '@mui/icons-material';
 
 interface ControlsProps {
   onFileUpload: (file: File) => void;
@@ -72,9 +72,9 @@ export default function Controls({
   let baseTimeMs = 0;
 
   if (hasData) {
-    const today7am = new Date();
-    today7am.setHours(7, 0, 0, 0);
-    baseTimeMs = today7am.getTime();
+    const baseDate = new Date();
+    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
+    baseTimeMs = baseDate.getTime();
 
     const stepMs = 30 * 60 * 1000;
     const startMs = baseTimeMs + timeRange[0] * stepMs;
@@ -86,6 +86,34 @@ export default function Controls({
     durationDisplay = `${durationHours}h ${durationMins}m`;
   }
 
+  let MAX_START_STEPS = 72 * 2; // Default fallback
+  if (hasData && data?.forecastAtRoutePoints) {
+    const pts = Object.values(data.forecastAtRoutePoints);
+    if (pts.length > 0 && pts[0].forecastAtIntervals) {
+      let maxMs = baseTimeMs;
+      let prevMs = -1;
+      let dayOffset = 0;
+      for (const timeIso of Object.keys(pts[0].forecastAtIntervals)) {
+        let tMs = 0;
+        if (timeIso.includes(':') && timeIso.length <= 5) {
+          const [h, m] = timeIso.split(':').map(Number);
+          const d = new Date();
+          d.setHours(h, m, 0, 0);
+          tMs = d.getTime() + dayOffset * 24 * 60 * 60 * 1000;
+          if (prevMs !== -1 && tMs < prevMs) {
+            dayOffset++;
+            tMs += 24 * 60 * 60 * 1000;
+          }
+          prevMs = tMs;
+        } else {
+          tMs = new Date(timeIso).getTime();
+        }
+        if (tMs > maxMs) maxMs = tMs;
+      }
+      MAX_START_STEPS = Math.max(0, Math.floor((maxMs - baseTimeMs) / (30 * 60 * 1000)));
+    }
+  }
+
   const handleSliderChange = (
     _event: Event,
     newValue: number | number[],
@@ -95,12 +123,12 @@ export default function Controls({
     let [newStart, newEnd] = newValue;
     const currentDuration = timeRange[1] - timeRange[0];
 
-    let maxStartIndex = maxSliderSteps;
-    if (baseTimeMs > 0) {
-      const midnight = new Date(baseTimeMs);
-      midnight.setHours(24, 0, 0, 0);
-      maxStartIndex = Math.floor((midnight.getTime() - baseTimeMs) / (30 * 60 * 1000));
+    // Enforce max start time
+    if (newStart > MAX_START_STEPS) {
+      newStart = MAX_START_STEPS;
     }
+
+    let maxStartIndex = maxSliderSteps;
 
     if (activeThumb === 0) {
       if (newStart > maxStartIndex) {
@@ -117,10 +145,15 @@ export default function Controls({
       }
     }
 
-    const minMaxSteps = 34; // 17 hours * 2
+    const midnight = new Date(baseTimeMs);
+    midnight.setHours(24, 0, 0, 0);
+    const minMaxSteps = Math.max(8, Math.floor((midnight.getTime() - baseTimeMs) / (30 * 60 * 1000)));
 
     if (newEnd >= maxSliderSteps - 1) {
-      setMaxSliderSteps(maxSliderSteps + 8); // Add 4 hours
+      const newMax = Math.min(MAX_START_STEPS + 24, maxSliderSteps + 8);
+      if (newMax > maxSliderSteps) {
+        setMaxSliderSteps(newMax);
+      }
     } else if (newEnd < maxSliderSteps - 8 && maxSliderSteps > minMaxSteps) {
       const newMax = Math.max(minMaxSteps, newEnd + 6);
       if (newMax < maxSliderSteps) {
@@ -130,13 +163,13 @@ export default function Controls({
 
     onTimeRangeChange([newStart, newEnd]);
   };
-
-  const gradientStops = weatherCards.map((card, idx) => {
-    const color = getWeatherColor(card.forecast, false, card.bearing, 0.8);
-    const percentage = (idx / Math.max(1, weatherCards.length - 1)) * 100;
-    return `${color} ${percentage}%`;
-  }).join(', ');
-  const sliderGradient = weatherCards.length > 0 ? `linear-gradient(to right, ${gradientStops})` : 'none';
+  /*
+    const gradientStops = weatherCards.map((card, idx) => {
+      const color = getWeatherColor(card.forecast, false, card.bearing, 0.8);
+      const percentage = (idx / Math.max(1, weatherCards.length - 1)) * 100;
+      return `${color} ${percentage}%`;
+    }).join(', ');
+    const sliderGradient = weatherCards.length > 0 ? `linear-gradient(to right, ${gradientStops})` : 'none';*/
 
   return (
     <Paper
@@ -145,8 +178,8 @@ export default function Controls({
         p: 2,
         display: 'flex',
         flexDirection: 'column',
-        backdropFilter: 'blur(10px)',
-        backgroundColor: 'rgba(30, 30, 30, 0.85)',
+        backdropFilter: 'blur(3px)',
+        backgroundColor: 'rgba(30, 30, 30, 0.05)',
         borderRadius: 3,
         border: '1px solid rgba(255, 255, 255, 0.05)',
       }}
@@ -154,10 +187,9 @@ export default function Controls({
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Button
-            component="label"
-            variant="contained"
+            component="label" variant='contained'
             disabled={isUploading || isDrawingMode}
-            startIcon={isUploading ? <CircularProgress size={20} color="inherit" /> : <CloudUploadIcon />}
+            startIcon={isUploading ? <CircularProgress size={20} /> : <FileUploadOutlined />}
             sx={{
               flex: 1,
               height: '32px',
@@ -166,9 +198,15 @@ export default function Controls({
               backgroundColor: 'rgba(25, 118, 210, 0.9)',
               '&:hover': { backgroundColor: 'rgba(21, 101, 192, 1)' },
               fontWeight: 600,
+              fontSize: '0.75em',
+              boxShadow: 'none',
+              '&:active': { boxShadow: 'none' },
+              '&:focus': { boxShadow: 'none' },
+              border: 'none',
+              color: '#fff'
             }}
           >
-            {isUploading ? 'Uploading...' : 'Upload GPX'}
+            {isUploading ? 'Uploading...' : 'UPLOAD GPX'}
             <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
           </Button>
           <Button
@@ -176,6 +214,7 @@ export default function Controls({
             color={isDrawingMode ? "secondary" : "primary"}
             onClick={() => onToggleDrawingMode(!isDrawingMode)}
             disabled={isUploading}
+            startIcon={<GestureOutlined />}
             sx={{
               flex: 1,
               height: '32px',
@@ -184,9 +223,15 @@ export default function Controls({
               backgroundColor: isDrawingMode ? undefined : 'rgba(25, 118, 210, 0.9)',
               '&:hover': { backgroundColor: isDrawingMode ? undefined : 'rgba(21, 101, 192, 1)' },
               fontWeight: 600,
+              fontSize: '0.75em',
+              boxShadow: 'none',
+              '&:active': { boxShadow: 'none' },
+              '&:focus': { boxShadow: 'none' },
+              border: 'none',
+              color: '#fff'
             }}
           >
-            {isDrawingMode ? 'Finish' : 'Draw Route'}
+            {isDrawingMode ? 'FINISH' : 'DRAW ROUTE'}
           </Button>
           {isDrawingMode && (
             <Button
@@ -210,7 +255,7 @@ export default function Controls({
       </Box>
 
       {hasData && (
-        <Box sx={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid rgba(255, 255, 255, 0.1)', color: 'black' }}>
           {weatherCards.length > 0 && (
             <>
               <Box
@@ -225,7 +270,7 @@ export default function Controls({
                   overflowX: 'auto',
                   scrollbarWidth: 'none',
                   pb: 0.25,
-                  pt: 1.75,
+                  pt: 1,
                   mt: 0,
                   cursor: isDragging ? 'grabbing' : 'grab',
                   '&::-webkit-scrollbar': { height: 6 },
@@ -256,73 +301,44 @@ export default function Controls({
                         alignItems: 'center',
                         backgroundColor: getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing),
                         borderRadius: 1,
-                        transform: idx === selectedCardIndex ? 'scale(1.15)' : 'scale(1)',
-                        transformOrigin: 'bottom',
-                        transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s',
                         cursor: 'pointer',
-                        zIndex: idx === selectedCardIndex ? 2 : 1,
-                        mx: idx === selectedCardIndex ? 0.5 : 0,
                         userSelect: 'none',
+                        boxShadow: 'none',
+                        '&:active': { boxShadow: 'none' },
+                        '&:focus': { boxShadow: 'none' },
+                        border: 'none'
                       }}
                     >
-                      <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, alignItems: 'center' }}>
-                        <Typography sx={{ fontWeight: 700, fontSize: '11px', color: 'text.secondary' }}>{timeString}</Typography>
-                        <Typography sx={{ fontWeight: 700, fontSize: '13px' }}>{card.forecast.temperature2m?.toFixed(0)}°C</Typography>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <Typography sx={{ fontWeight: 700, fontSize: '14px' }}>{card.forecast.temperature2m?.toFixed(0)}°C</Typography>
                         <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.windSpeed10m?.toFixed(0)} km/h</Typography>
                         <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitationProbability?.toFixed(0)}%</Typography>
-                        <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitation?.toFixed(0)} mm</Typography>
+                        {/*Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitation?.toFixed(0)} mm</Typography*/}
+                        <Typography sx={{ fontWeight: 700, fontSize: '11px', opacity: 0.6 }}>{timeString}</Typography>
                       </Box>
                     </Paper>
                   );
                 })}
-              </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'row', gap: 1.5, alignItems: 'center' }}
-              >
-                <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                  30min
-                </Typography>
-                <Slider
-                  value={selectedCardIndex}
-                  onChange={(_, val) => {
-                    const idx = val as number;
-                    onCardIndexChange(idx);
-                    if (scrollRef.current && scrollRef.current.children[idx]) {
-                      (scrollRef.current.children[idx] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-                    }
-                  }}
-                  step={1}
-                  min={0}
-                  max={Math.max(0, weatherCards.length - 1)}
-                  valueLabelDisplay="off"
-                  size="small"
-                  sx={{
-                    py: 1,
-                    '& .MuiSlider-rail': {
-                      background: sliderGradient,
-                      opacity: 1,
-                    },
-                    '& .MuiSlider-track': {
-                      border: 'none',
-                      background: 'transparent',
-                    }
-                  }}
-                />
-
               </Box>
             </>
           )}
 
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-                Start & Duration
+              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                Start at {startTimeDisplay}
               </Typography>
-              <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {startTimeDisplay} ({(data?.distance ?? data?.Distance ?? 0).toFixed(1)}km, {durationDisplay})
+              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                {(data?.distance ?? data?.Distance ?? 0).toFixed(0)}km in {durationDisplay}
               </Typography>
             </Box>
             <Slider
-              sx={{ ml: 1 }}
+              sx={{
+                ml: 1, color: '#38f', '& .MuiSlider-thumb': {
+                  borderRadius: '1px',
+                  width: '12px',
+                },
+              }}
               value={timeRange}
               onChange={handleSliderChange}
               step={1}

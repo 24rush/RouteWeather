@@ -4,12 +4,28 @@ import MapViewer from './components/MapViewer';
 import Controls from './components/Controls';
 import type { RouteScoringDetails } from './types';
 import { api } from './api';
-import { getBearing } from './utils';
+import { getBearing, getDistance } from './utils';
 
 function App() {
   const [data, setData] = useState<RouteScoringDetails | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([0, 4]); // Default 2 hours (4 * 30m)
-  const [maxSliderSteps, setMaxSliderSteps] = useState(96);
+  const getInitialMaxSteps = () => {
+    const baseDate = new Date();
+    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
+    const midnight = new Date(baseDate.getTime());
+    midnight.setHours(24, 0, 0, 0);
+    return Math.max(8, Math.floor((midnight.getTime() - baseDate.getTime()) / (30 * 60 * 1000)));
+  };
+
+  const getInitialDurationSteps = (routeData: RouteScoringDetails | null) => {
+    const distance = routeData?.distance ?? routeData?.Distance ?? 0;
+    if (distance === 0) return 4;
+    const speed = distance < 20 ? 8 : 24;
+    const hours = distance / speed;
+    return Math.max(1, Math.ceil(hours * 2));
+  };
+
+  const [maxSliderSteps, setMaxSliderSteps] = useState(getInitialMaxSteps());
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
@@ -21,12 +37,12 @@ function App() {
       setDrawnPoints([]); // Clear the red drawing line from map
       setIsUploading(true);
       // Pass the specific GUID for the demo track
-      const homepageData = await api.getHomepageData("019ef898-9951-73f3-8389-097190955155");
+      const homepageData = await api.getHomepageData("019ef814-794e-767b-bdba-a8ab31430cdc");
       setData(homepageData);
 
-      // Set default time to 7am today, max slider to midnight (17 hours = 34 steps)
-      setMaxSliderSteps(34);
-      setTimeRange([0, 4]); // Default 2 hours duration
+      // Set default time to the next full hour, max slider to midnight
+      setMaxSliderSteps(getInitialMaxSteps());
+      setTimeRange([0, getInitialDurationSteps(homepageData)]);
     } catch (error) {
       console.error("Error fetching demo data:", error);
     } finally {
@@ -44,8 +60,8 @@ function App() {
       const homepageData = await api.uploadGpx(file);
       setData(homepageData);
 
-      setMaxSliderSteps(34);
-      setTimeRange([0, 4]);
+      setMaxSliderSteps(getInitialMaxSteps());
+      setTimeRange([0, getInitialDurationSteps(homepageData)]);
     } catch (error) {
       console.error("Error uploading or fetching data:", error);
       alert("Failed to upload GPX or fetch route data. Please ensure backend is running.");
@@ -63,9 +79,25 @@ function App() {
 
     setIsUploading(true);
 
+    const sampledPoints = [];
+    if (points.length > 0) {
+      sampledPoints.push(points[0]);
+      let lastPoint = points[0];
+      for (let i = 1; i < points.length; i++) {
+        const dist = getDistance(lastPoint[0], lastPoint[1], points[i][0], points[i][1]);
+        if (dist >= 0.025) { // 25 meters
+          sampledPoints.push(points[i]);
+          lastPoint = points[i];
+        }
+      }
+      if (points.length > 1 && lastPoint !== points[points.length - 1]) {
+        sampledPoints.push(points[points.length - 1]);
+      }
+    }
+
     // Generate simple GPX XML
     let gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="RouteWeather">\n<trk>\n<name>Drawn Route</name>\n<trkseg>\n`;
-    for (const pt of points) {
+    for (const pt of sampledPoints) {
       gpx += `<trkpt lat="${pt[0]}" lon="${pt[1]}"><ele>0</ele></trkpt>\n`;
     }
     gpx += `</trkseg>\n</trk>\n</gpx>`;
@@ -74,8 +106,8 @@ function App() {
     try {
       const homepageData = await api.uploadGpx(file);
       setData(homepageData);
-      setMaxSliderSteps(34);
-      setTimeRange([0, 4]);
+      setMaxSliderSteps(getInitialMaxSteps());
+      setTimeRange([0, getInitialDurationSteps(homepageData)]);
     } catch (error) {
       console.error("Error uploading drawn route:", error);
       alert("Failed to upload drawn route.");
@@ -103,9 +135,9 @@ function App() {
 
     const [startIndex, endIndex] = timeRange;
 
-    const today7am = new Date();
-    today7am.setHours(7, 0, 0, 0);
-    const baseTimeMs = today7am.getTime();
+    const baseDate = new Date();
+    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
+    const baseTimeMs = baseDate.getTime();
 
     const stepMs = 30 * 60 * 1000;
 
@@ -142,13 +174,20 @@ function App() {
       let minDiff = Infinity;
 
       if (pointForecasts) {
+        let prevMs = -1;
+        let dayOffset = 0;
         for (const [timeIso, forecast] of Object.entries(pointForecasts)) {
           let tMs = 0;
           if (timeIso.includes(':') && timeIso.length <= 5) {
             const [h, m] = timeIso.split(':').map(Number);
             const d = new Date();
             d.setHours(h, m, 0, 0);
-            tMs = d.getTime();
+            tMs = d.getTime() + dayOffset * 24 * 60 * 60 * 1000;
+            if (prevMs !== -1 && tMs < prevMs) {
+              dayOffset++;
+              tMs += 24 * 60 * 60 * 1000;
+            }
+            prevMs = tMs;
           } else {
             tMs = new Date(timeIso).getTime();
           }
@@ -207,7 +246,7 @@ function App() {
       </Box>
 
       {/* Floating Controls Overlay */}
-      <Box sx={{ position: 'absolute', top: 24, left: 24, zIndex: 1000, width: 380, maxWidth: '90%' }}>
+      <Box sx={{ position: 'absolute', top: 24, left: 24, zIndex: 1000, width: 380, maxWidth: '88%' }}>
         <Controls
           onFileUpload={handleFileUpload}
           isUploading={isUploading}
