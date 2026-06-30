@@ -38,11 +38,16 @@ export default function Controls({
   onClearRoute
 }: ControlsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const touchStartXRef = useRef<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+
+  const handleAlertTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+  };
 
   const hasData = data && data.weatherPoints && Object.keys(data.weatherPoints).length > 0;
 
@@ -841,7 +846,20 @@ export default function Controls({
               </Box>
 
               {sectionWeatherData.length > 0 && (
-                <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, p: 0.5 }}>
+                <Box 
+                  onTouchStart={handleAlertTouchStart}
+                  onTouchEnd={(e) => {
+                    if (touchStartXRef.current === null) return;
+                    const diff = touchStartXRef.current - e.changedTouches[0].clientX;
+                    if (diff > 50) {
+                      setActiveSectionIndex(prev => Math.min(sectionWeatherData.length - 1, prev + 1));
+                    } else if (diff < -50) {
+                      setActiveSectionIndex(prev => Math.max(0, prev - 1));
+                    }
+                    touchStartXRef.current = null;
+                  }}
+                  sx={{ display: 'flex', alignItems: 'center', mt: 0.5, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, p: 0.5 }}
+                >
                   <IconButton
                     size="small"
                     onClick={() => setActiveSectionIndex(prev => Math.max(0, prev - 1))}
