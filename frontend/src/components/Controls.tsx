@@ -519,9 +519,9 @@ export default function Controls({
       const startMs = baseTimeMs + step * 30 * 60 * 1000;
       const startDate = new Date(startMs);
 
-      // Cap start time to daylight hours (between 06:00 and 19:00 local time)
+      // Cap start time to daylight hours (between 06:00 and 21:00 local time)
       const hour = startDate.getHours();
-      if (hour < 6 || hour > 19 || (hour === 19 && startDate.getMinutes() > 0)) {
+      if (hour < 6 || hour > 21 || (hour === 21 && startDate.getMinutes() > 0)) {
         continue;
       }
 
@@ -537,11 +537,12 @@ export default function Controls({
 
     // If all times were capped and none found, fallback safely
     if (bestScore === -Infinity) {
-      bestStep = 0;
+      return { noOptimalTime: true, timeStr: '', avgTemp: 0, avgRain: 0, avgWind: 0 };
     }
 
     const startMs = baseTimeMs + bestStep * 30 * 60 * 1000;
     return {
+      noOptimalTime: false,
       timeStr: new Date(startMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
       avgTemp: bestTemp,
       avgRain: bestRain,
@@ -679,25 +680,29 @@ export default function Controls({
                   <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.55em', color: '#4b4b4bff' }}>
                     OPTIMAL START TIME
                   </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'center', mt: 0.25 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 700 }}>{bestStartData.timeStr}</Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                      <Thermostat sx={{ fontSize: 14 }} />
-                      <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgTemp.toFixed(1)}°C</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                      <WaterDrop sx={{ fontSize: 14 }} />
-                      <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgRain.toFixed(1)}mm</Typography>
-                    </Box>
-                    {Math.abs(bestStartData.avgWind) >= 1.0 && (
+                  {bestStartData.noOptimalTime ? (
+                    <Typography variant="caption" sx={{ fontWeight: 600, mt: 0.25 }}>No daylight times left today</Typography>
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'center', mt: 0.25 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700 }}>{bestStartData.timeStr}</Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                        <Air sx={{ fontSize: 14 }} />
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                          {bestStartData.avgWind > 0 ? `${bestStartData.avgWind.toFixed(0)}km/h hw` : `${Math.abs(bestStartData.avgWind).toFixed(0)}km/h tw`}
-                        </Typography>
+                        <Thermostat sx={{ fontSize: 14 }} />
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgTemp.toFixed(1)}°C</Typography>
                       </Box>
-                    )}
-                  </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                        <WaterDrop sx={{ fontSize: 14 }} />
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgRain.toFixed(1)}mm</Typography>
+                      </Box>
+                      {Math.abs(bestStartData.avgWind) >= 1.0 && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                          <Air sx={{ fontSize: 14 }} />
+                          <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                            {bestStartData.avgWind > 0 ? `${bestStartData.avgWind.toFixed(0)}km/h hw` : `${Math.abs(bestStartData.avgWind).toFixed(0)}km/h tw`}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
                 </Box>
               )}
               {weatherCards.length > 0 && (
@@ -830,7 +835,7 @@ export default function Controls({
                         strokeOpacity={0}
                       />
                     ))}
-                    <Area type="monotone" dataKey="elevation" stroke="#1976d2" fill="#87b1d3ff" fillOpacity={0.5} isAnimationActive={false} activeDot={false} />
+                    <Area type="monotone" dataKey="elevation" stroke="#1976d2" fill="#90caf9" fillOpacity={0.5} isAnimationActive={false} activeDot={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </Box>
@@ -927,7 +932,7 @@ export default function Controls({
           {activeTab !== 0 && hasData && (
             <Box sx={{ display: 'flex', flexDirection: 'column', mt: 'auto' }}>
               <Box sx={{ display: 'flex', flexDirection: 'column', pt: 0.25 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, px: 1, py: 0.25 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <Typography variant="caption" sx={{ fontWeight: 600 }}>Start at {startTimeDisplay}</Typography>
                   {currentStartData && (
                     <>
