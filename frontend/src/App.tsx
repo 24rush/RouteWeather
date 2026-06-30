@@ -18,7 +18,7 @@ function App() {
   };
 
   const getInitialDurationSteps = (routeData: RouteScoringDetails | null) => {
-    const distance = routeData?.distance ?? routeData?.Distance ?? 0;
+    const distance = (routeData?.physics.distances[routeData?.physics.distances.length - 1] ?? 0) / 1000.0;
     if (distance === 0) return 4;
     const speed = distance < 20 ? 8 : 24;
     const hours = distance / speed;
@@ -37,12 +37,14 @@ function App() {
       setDrawnPoints([]); // Clear the red drawing line from map
       setIsUploading(true);
       // Pass the specific GUID for the demo track
-      const homepageData = await api.getHomepageData("019ef898-9951-73f3-8389-097190955155");
+      const homepageData = await api.getHomepageData(window.location.hostname.includes("localhost") ?
+        "019f189f-5c4c-7d03-8843-f1c624d45342" :
+        "019f189a-9332-7b11-a396-1653cb69553f");
       setData(homepageData);
 
       // Set default time to the next full hour, max slider to midnight
       setMaxSliderSteps(getInitialMaxSteps());
-      setTimeRange([0, getInitialDurationSteps(homepageData)]);
+      //setTimeRange([0, getInitialDurationSteps(homepageData)]);
     } catch (error) {
       console.error("Error fetching demo data:", error);
     } finally {
@@ -131,7 +133,9 @@ function App() {
   };
 
   const weatherCards = useMemo(() => {
-    if (!data || !data.pointSequence || data.pointSequence.length === 0) return [];
+    if (!data || !data.weatherPoints) return [];
+    const pts = Object.keys(data.weatherPoints).map(Number).sort((a, b) => a - b);
+    if (pts.length === 0) return [];
 
     const [startIndex, endIndex] = timeRange;
 
@@ -145,12 +149,9 @@ function App() {
     const endTimeMs = baseTimeMs + endIndex * stepMs;
     const durationMs = endTimeMs - startTimeMs;
 
-    const pts = data.pointSequence;
-    if (!pts || pts.length === 0) return [];
-
     const coords: [number, number][] = [];
     for (let i = 0; i < pts.length; i++) {
-      const ptStr = data.routePoints[pts[i]];
+      const ptStr = data.weatherPoints[pts[i]];
       if (!ptStr) {
         coords.push([0, 0]);
         continue;
@@ -160,7 +161,6 @@ function App() {
     }
 
     const cards = [];
-    const seenTimes = new Set<string>();
     let lastBearing: number | null = null;
 
     for (let i = 0; i < pts.length; i++) {
@@ -168,29 +168,14 @@ function App() {
       const fraction = i / Math.max(1, pts.length - 1);
       const arrivalTimeMs = startTimeMs + fraction * durationMs;
 
-      const pointForecasts = data.forecastAtRoutePoints[ptId]?.forecastAtIntervals;
+      const pointForecasts = data.forecastAtWeatherPoints[ptId]?.forecastAtIntervals;
       let closestTimeIso = '';
       let closestForecast = null;
       let minDiff = Infinity;
 
       if (pointForecasts) {
-        let prevMs = -1;
-        let dayOffset = 0;
         for (const [timeIso, forecast] of Object.entries(pointForecasts)) {
-          let tMs = 0;
-          if (timeIso.includes(':') && timeIso.length <= 5) {
-            const [h, m] = timeIso.split(':').map(Number);
-            const d = new Date();
-            d.setHours(h, m, 0, 0);
-            tMs = d.getTime() + dayOffset * 24 * 60 * 60 * 1000;
-            if (prevMs !== -1 && tMs < prevMs) {
-              dayOffset++;
-              tMs += 24 * 60 * 60 * 1000;
-            }
-            prevMs = tMs;
-          } else {
-            tMs = new Date(timeIso).getTime();
-          }
+          const tMs = new Date(timeIso).getTime();
           const diff = Math.abs(tMs - arrivalTimeMs);
           if (diff < minDiff) {
             minDiff = diff;
@@ -200,8 +185,7 @@ function App() {
         }
       }
 
-      if (closestForecast && !seenTimes.has(closestTimeIso)) {
-        seenTimes.add(closestTimeIso);
+      if (closestForecast) {
 
         let bearing: number | null = null;
         for (let j = i + 1; j < Math.min(i + 5, pts.length); j++) {

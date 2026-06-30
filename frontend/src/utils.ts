@@ -21,6 +21,12 @@ export const getDistance = (lat1: number, lon1: number, lat2: number, lon2: numb
   return R * c;
 };
 
+export const getWindColor = (windSpeed: number) => {
+  // Map wind speed (0 - 40km/h) to hue (120 - 0)
+  const hue = Math.max(0, 120 - (windSpeed * 3));
+  return `hsl(${hue}, 80%, 70%)`;
+};
+
 export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: number | null, overrideAlpha?: number) => {
   if (!forecast) return isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)';
 
@@ -46,4 +52,46 @@ export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: num
 
   const alpha = overrideAlpha !== undefined ? overrideAlpha : (isSelected ? 0.9 : 0.7);
   return `hsla(${hue}, 70%, 40%, ${alpha})`;
+};
+
+export const decodePolyline = (str: string, precision: number = 5) => {
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  const coordinates: [number, number][] = [];
+  const shift = Math.pow(10, precision);
+  let shiftAmount = 0;
+  let result = 0;
+  let byte = null;
+
+  while (index < str.length) {
+    byte = null;
+    shiftAmount = 0;
+    result = 0;
+
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shiftAmount;
+      shiftAmount += 5;
+    } while (byte >= 0x20);
+
+    const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+
+    shiftAmount = 0;
+    result = 0;
+
+    do {
+      byte = str.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shiftAmount;
+      shiftAmount += 5;
+    } while (byte >= 0x20);
+
+    const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+
+    coordinates.push([lat / shift, lng / shift]);
+  }
+
+  return coordinates;
 };

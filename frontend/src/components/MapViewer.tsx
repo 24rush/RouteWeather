@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, Tooltip, useMap } from 'react-leaflet';
 import type { RouteScoringDetails } from '../types';
-import { getWeatherColor } from '../utils';
+import { getWeatherColor, getWindColor, decodePolyline } from '../utils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -28,16 +28,20 @@ const createWeatherIcon = (windDirection: number, windSpeed: number, maxWindSpee
   const rawHeight = maxWindSpeed > 0 ? (windSpeed / maxWindSpeed) * maxHeight : 0;
   const height = Math.max(minHeight, Math.round(rawHeight));
 
+  const showArrow = windSpeed >= 5;
+  const arrowColor = getWindColor(windSpeed);
+
   return new L.DivIcon({
     html: `
       <div style="position: relative; width: 84px; height: 84px; display: flex; align-items: center; justify-content: center;">
         <div style="position: absolute; background-color: #195c96ff; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); z-index: 2;"></div>
+        ${showArrow ? `
         <div style="position: absolute; transform: rotate(${windDirection}deg); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1;">
-      <svg width="24" height="${height}" viewBox="0 0 24 ${height}" fill="none" stroke="#c0c0c0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(255,255,255,0.8));">
+      <svg width="24" height="${height}" viewBox="0 0 24 ${height}" fill="none" stroke="${arrowColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(255,255,255,0.8));">
         <line x1="12" y1="2" x2="12" y2="${Math.max(2, height - 2)}"></line>
         <polyline points="7.256 21.208 11.944 2.09 16.633 21.208" style="" stroke-width="3"></polyline>
       </svg>
-        </div>
+        </div>` : ''}
       </div>
     `,
     className: 'marker-icon',
@@ -210,17 +214,16 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
     return max;
   }, [weatherCards]);
 
-  // Extract route positions from trackPoints
+  // Extract route positions from routePolyline
   const routePositions = useMemo(() => {
-    const positions: [number, number][] = [];
-    if (!data || !data.trackPoints) return positions;
-
-    for (const pt of data.trackPoints) {
-      if (pt && typeof pt.lat === 'number' && typeof pt.lng === 'number') {
-        positions.push([pt.lat, pt.lng]);
+    if (data?.routePolyline) {
+      try {
+        return decodePolyline(data.routePolyline);
+      } catch (e) {
+        console.error("Failed to decode polyline", e);
       }
     }
-    return positions;
+    return [];
   }, [data]);
 
   // Extract chevrons for the route
