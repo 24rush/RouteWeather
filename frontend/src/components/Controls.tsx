@@ -676,7 +676,7 @@ export default function Controls({
                   flexDirection: 'column',
                   alignItems: 'center'
                 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.em' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.55em', color: '#4b4b4bff' }}>
                     OPTIMAL START TIME
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'center', mt: 0.25 }}>
@@ -830,13 +830,13 @@ export default function Controls({
                         strokeOpacity={0}
                       />
                     ))}
-                    <Area type="monotone" dataKey="elevation" stroke="#8884d8" fill="#8884d8" fillOpacity={0.3} isAnimationActive={false} activeDot={false} />
+                    <Area type="monotone" dataKey="elevation" stroke="#1976d2" fill="#87b1d3ff" fillOpacity={0.5} isAnimationActive={false} activeDot={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </Box>
 
               {sectionWeatherData.length > 0 && (
-                <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 2, p: 0.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, p: 0.5 }}>
                   <IconButton
                     size="small"
                     onClick={() => setActiveSectionIndex(prev => Math.max(0, prev - 1))}
@@ -926,8 +926,8 @@ export default function Controls({
 
           {activeTab !== 0 && hasData && (
             <Box sx={{ display: 'flex', flexDirection: 'column', mt: 'auto' }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', pt: 0.5 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', pt: 0.25 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, px: 1, py: 0.25 }}>
                   <Typography variant="caption" sx={{ fontWeight: 600 }}>Start at {startTimeDisplay}</Typography>
                   {currentStartData && (
                     <>
