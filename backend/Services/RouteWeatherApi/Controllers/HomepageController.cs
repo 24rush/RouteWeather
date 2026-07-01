@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using route_scoring_engine;
 using Shared.Domain.Domain;
@@ -17,7 +17,7 @@ namespace RouteWeatherApi.Controllers
         }
 
         [HttpGet()]
-        public async Task<RouteScoringDetails?> Get(Guid id)
+        public async Task<RouteScoringDetails?> Get([FromQuery] Guid id)
         {
             return await _scoringEngine.ScoreRouteToday(id);
         }

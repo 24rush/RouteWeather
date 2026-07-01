@@ -1,6 +1,8 @@
 <Solution>
   <Project Path="backend/Services/RouteScoringService/RouteScoringService.csproj" />
+  <Project Path="backend/Services/RouteWeatherApi.Tests/RouteWeatherApi.Tests.csproj" />
   <Project Path="backend/Services/RouteWeatherApi/RouteWeatherApi.csproj" />
   <Project Path="backend/Shared/RouteScoringEngine/RouteScoringEngine.csproj" />
+  <Project Path="backend/Shared/Shared.Domain.Tests/Shared.Domain.Tests.csproj" />
   <Project Path="backend/Shared/Shared.Domain/Shared.Domain.csproj" />
 </Solution>

@@ -1,5 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
+using System.Linq;
 
 namespace Shared.Domain.OpenMeteo
 {
@@ -15,9 +16,22 @@ namespace Shared.Domain.OpenMeteo
 
     public class HourlyData
     {
-        // All timestamps but in local time
+        // All timestamps in UTC
+        private DateTime[]? _utcTime;
+
         [NotMapped]
-        public DateTime[] LocalTime { get; set; } = [];
+        public DateTime[] UtcTime 
+        { 
+            get 
+            {
+                if (_utcTime == null || _utcTime.Length != Time.Length)
+                {
+                    _utcTime = Time.Select(t => DateTime.SpecifyKind(DateTime.Parse(t), DateTimeKind.Utc)).ToArray();
+                }
+                return _utcTime;
+            }
+            set => _utcTime = value;
+        }
 
         public string[] Time { get; set; } = [];
 

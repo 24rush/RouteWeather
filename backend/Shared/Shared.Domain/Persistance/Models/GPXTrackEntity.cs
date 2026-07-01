@@ -7,18 +7,20 @@ namespace Shared.Domain.Persistance.Models
     public class GPXTrackEntity
     {
         [JsonIgnore]
-        public Guid Id { get; init; }
-
-        [Required]
-        public required string Name { get; init; }
-        [Required]
-        public required double Distance { get; set; } 
-        [Required]
-        public required LineString SampledPoints { get; set; }
-        [Required]
-        public required LineString TrackPoints { get; set; }
-
+        public Guid Id { get; init; }        
         [JsonIgnore]
-        public DateTime ForecastGenerationTime {  get; set; }
+        public DateTime ForecastGenerationTime { get; set; }
+
+        // Database
+        [Required]
+        public required string Name { get; init; }        
+        [Required]        
+        public required LineString WeatherPoints { get; set; } // Weather points at 4 km distance
+        [Required]        
+        public required LineString TrackPoints { get; set; }
+        [Required]
+        public required string RoutePolyline { get; set; }
+        [Required]        
+        public required string Physics { get; set; } // JSON containing the master array and corresponding parameters
     }
 }

@@ -10,7 +10,6 @@ namespace Shared.Domain.Persistance.Repositories
         Task<List<PointForecastEntity>?> GetForecastForRouteID(Guid routeId);
         Task RemoveForecastForRouteID(Guid routeId);
         void AddForecastAtPoint(PointForecastEntity forecast);
-        List<PointForecastEntity> GetPendingForecast();
         Task SaveChangesAsync();
     }
 }

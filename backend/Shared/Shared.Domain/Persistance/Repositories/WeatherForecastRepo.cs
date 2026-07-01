@@ -1,6 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
-using Shared.Domain.OpenMeteo;
 using Shared.Domain.Persistance.Models;
 
 namespace Shared.Domain.Persistance.Repositories
@@ -23,22 +22,7 @@ namespace Shared.Domain.Persistance.Repositories
 
         public async Task<List<PointForecastEntity>?> GetForecastForRouteID(Guid routeId)
         {
-            var results = await _context.PointForecast.Where(fp => fp.RouteId == routeId).AsNoTracking().ToListAsync();
-            results.ForEach(r => generateDateTimeLocals(r.Hourly));
-
-            return results;
-        }
-
-        private void generateDateTimeLocals(HourlyData hourly)
-        {
-            // Generate DateTime timestamps in local time
-            // TODO: This is server time
-            hourly.LocalTime = new DateTime[hourly.Time.Length];
-
-            for (var i = 0; i < hourly.Time.Length; i++)
-            {
-                hourly.LocalTime[i] = DateTime.SpecifyKind(DateTime.Parse(hourly.Time[i]), DateTimeKind.Utc).ToLocalTime();
-            }
+            return await _context.PointForecast.Where(fp => fp.RouteId == routeId).AsNoTracking().ToListAsync();            
         }
 
         async Task<PointForecastEntity?> IWeatherForecastRepo.GetForecastAtPoint(Point latLng)
@@ -50,7 +34,6 @@ namespace Shared.Domain.Persistance.Repositories
                 .FirstOrDefaultAsync();
 
             if (forecast == null) return null;
-            generateDateTimeLocals(forecast.Hourly);
 
             return forecast;
         }
@@ -77,8 +60,6 @@ namespace Shared.Domain.Persistance.Repositories
             if (result.Count == 0)
                 return null;
 
-            result.ForEach(r => generateDateTimeLocals(r.Hourly));
-
             return result;
         }
 
@@ -90,14 +71,6 @@ namespace Shared.Domain.Persistance.Repositories
         public async Task RemoveForecastForRouteID(Guid routeId)
         {
             await _context.PointForecast.Where(x => x.RouteId == routeId).ExecuteDeleteAsync();
-        }
-
-        public List<PointForecastEntity> GetPendingForecast()
-        {
-            var localForecast = _context.PointForecast.ToList();
-            localForecast.ForEach(r => generateDateTimeLocals(r.Hourly));            
-
-            return localForecast;
         }
     }
 }

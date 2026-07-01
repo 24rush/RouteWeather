@@ -1,4 +1,4 @@
-﻿using api.BackgroundService.OpenMeteo;
+using api.BackgroundService.OpenMeteo;
 using NetTopologySuite.Geometries;
 using Shared.Domain.Domain;
 using Shared.Domain.Persistance.Models;
@@ -13,15 +13,6 @@ namespace route_scoring_engine
 
         private readonly OpenMeteoClient _openMeteoClient;
 
-        class UserPreferences
-        {
-            private const int PREF_START_HOUR = 7;
-            private const int PREF_START_HOUR_MAX = 18;
-
-            public static DateTime prefStartTime = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.Day, PREF_START_HOUR, 0, 0);
-            public static DateTime prefMaxStartTime = new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.Today.Day, PREF_START_HOUR_MAX, 0, 0);
-        }
-
         public RouteScoringEngine(IGPXTracksRepo gpxRepo, IWeatherForecastRepo weatherRepo, OpenMeteoClient client)
         {
             _openMeteoClient = client;
@@ -31,11 +22,9 @@ namespace route_scoring_engine
 
         private async Task<List<PointForecastEntity>?> getWeatherDataForRoute(GPXTrackEntity route)
         {
-            if (DateTime.UtcNow.Subtract(route.ForecastGenerationTime).TotalHours >= 3)
-            {
-                await _weatherRepo.RemoveForecastForRouteID(route.Id);
-
-                var pointsForWeather = route.SampledPoints.Coordinates.Select(c => new Point(c) { SRID = 4326 }).ToArray();
+            if (DateTime.UtcNow.Subtract(route.ForecastGenerationTime).TotalHours >= 3 || route.Id == Guid.Empty)
+            {                
+                var pointsForWeather = route.WeatherPoints.Coordinates.Select(c => new Point(c) { SRID = 4326 }).ToArray();
 
                 var forecast = await _openMeteoClient.GetForecastAsync(pointsForWeather);
 
@@ -47,20 +36,28 @@ namespace route_scoring_engine
 
                 route.ForecastGenerationTime = DateTime.UtcNow;
 
+                var pointForecastList = new List<PointForecastEntity>();
+
                 // Update DB with latest weather data                
                 foreach (var pointForecast in forecast)
                 {
-                    _weatherRepo.AddForecastAtPoint(PointForecastEntity.FromOpenMeteoResponse(pointForecast, route.Id));
+                    pointForecastList.Add(PointForecastEntity.FromOpenMeteoResponse(pointForecast, route.Id));                    
                 }
 
                 if (route.Id != Guid.Empty)
                 {
+                    pointForecastList.ForEach(p => { if (p != null) _weatherRepo.AddForecastAtPoint(p); });
+                    await _weatherRepo.RemoveForecastForRouteID(route.Id);
                     await _gpxRepo.SaveChangesAsync();
                     await _weatherRepo.SaveChangesAsync();
                 }
+                else
+                {
+                    return pointForecastList;
+                }
             }
 
-            return route.Id != Guid.Empty ? await _weatherRepo.GetForecastForRouteID(route.Id) : _weatherRepo.GetPendingForecast();
+            return await _weatherRepo.GetForecastForRouteID(route.Id);
         }
 
         private double interpolateValues(double a, double b, double distance)
@@ -70,18 +67,18 @@ namespace route_scoring_engine
 
         private HourlyForecastAtOMPoint? getForecastAtTimestamp(PointForecastEntity forecast, DateTime timestamp)
         {
-            for (int i = 0; i < forecast.Hourly.LocalTime.Length - 1; i++)
+            for (int i = 0; i < forecast.Hourly.UtcTime.Length - 1; i++)
             {
                 var forecastAtPoint = forecast.Hourly;
 
-                if (timestamp >= forecastAtPoint.LocalTime[i] && timestamp < forecastAtPoint.LocalTime[i + 1])
+                if (timestamp >= forecastAtPoint.UtcTime[i] && timestamp < forecastAtPoint.UtcTime[i + 1])
                 {
-                    var minutes = timestamp.Subtract(forecastAtPoint.LocalTime[i]).Minutes;
+                    var minutes = timestamp.Subtract(forecastAtPoint.UtcTime[i]).Minutes;
                     var percentage = minutes == 0 ? 0 : 1 / 60.0 / minutes;
 
                     return new HourlyForecastAtOMPoint()
                     {
-                        Time = timestamp.ToString("HH:mm"),
+                        Time = timestamp.ToString("yyyy-MM-ddTHH:mm:ssZ"),
                         Temperature2m = interpolateValues(forecastAtPoint.Temperature2m[i], forecastAtPoint.Temperature2m[i + 1], percentage),
                         WindSpeed10m = interpolateValues(forecastAtPoint.WindSpeed10m[i], forecastAtPoint.WindSpeed10m[i + 1], percentage),
                         WindDirection10m = interpolateValues(forecastAtPoint.WindDirection10m[i], forecastAtPoint.WindDirection10m[i + 1], percentage),
@@ -157,10 +154,11 @@ namespace route_scoring_engine
             const int MINUTES_BETWEEN_WEATHER_SAMPLES = 30;
 
             var routeScoringDetails = new RouteScoringDetails();
-            routeScoringDetails.TrackPoints = route.TrackPoints.Coordinates.Select(c => new LatLng(c.Y, c.X)).ToList();
+            routeScoringDetails.RoutePolyline = route.RoutePolyline;
+            routeScoringDetails.Physics = route.Physics;
 
             // Map OpenMeteo grid points to Route Points            
-            var pointsOnRoute = route.SampledPoints.Coordinates.Select(c => new Point(c) { SRID = 4326 }).ToList();
+            var pointsOnRoute = route.WeatherPoints.Coordinates.Select(c => new Point(c) { SRID = 4326 }).ToList();
 
             var getDistanceSquared = (Point a, Point b) =>
             {
@@ -170,7 +168,7 @@ namespace route_scoring_engine
             };
 
             var routePointToIdDict = new Dictionary<Point, int>();
-            foreach (var routeCoordinate in route.SampledPoints.Coordinates)
+            foreach (var routeCoordinate in route.WeatherPoints.Coordinates)
             {
                 var routePoint = routeCoordinate.ToPoint();
 
@@ -184,29 +182,25 @@ namespace route_scoring_engine
 
                 if (!routePointToIdDict.ContainsKey(routePoint))
                 {
-                    routeScoringDetails.RoutePoints[routeScoringDetails.RoutePoints.Keys.Count] = routePoint;
-                    routePointToIdDict[routePoint] = routeScoringDetails.RoutePoints.Keys.Count - 1;
+                    routeScoringDetails.WeatherPoints[routeScoringDetails.WeatherPoints.Keys.Count] = routePoint;
+                    routePointToIdDict[routePoint] = routeScoringDetails.WeatherPoints.Keys.Count - 1;
                 }
 
                 var pointIdx = routePointToIdDict[routePoint];
 
-                // Add the point id to the sequence
-                routeScoringDetails.PointSequence.Add(routePointToIdDict[routePoint]);
-
                 // Generate weather data for all points at all timestamps           
                 var weatherForecastAtPoint = new WeatherForecast();
-                if (routeScoringDetails.ForecastAtRoutePoints.ContainsKey(pointIdx))
+                if (routeScoringDetails.ForecastAtWeatherPoints.ContainsKey(pointIdx))
                     continue;
 
-                routeScoringDetails.ForecastAtRoutePoints.Add(pointIdx, weatherForecastAtPoint);
-
+                routeScoringDetails.ForecastAtWeatherPoints.Add(pointIdx, weatherForecastAtPoint);
                 // Get weather data at 30 minute intervals
-                for (var currStartTime = UserPreferences.prefStartTime;
-                    currStartTime <= UserPreferences.prefStartTime.AddHours(23);
+                for (var currStartTime = closestWeatherDataPoint.Hourly.UtcTime[0];
+                    currStartTime <= closestWeatherDataPoint.Hourly.UtcTime[0].AddHours(23);
                     currStartTime = currStartTime.AddMinutes(MINUTES_BETWEEN_WEATHER_SAMPLES))
                 {
                     var forecastAtTimeStamp = getForecastAtTimestamp(closestWeatherDataPoint, currStartTime);
-                    if (forecastAtTimeStamp == null) return null;
+                    if (forecastAtTimeStamp == null) continue;
 
                     weatherForecastAtPoint.ForecastAtIntervals.Add(forecastAtTimeStamp.Time, forecastAtTimeStamp);
                 }
@@ -221,9 +215,7 @@ namespace route_scoring_engine
             if (route == null) return null;
 
             var scoringDetails = await ScoreRouteToday(route);
-            if (scoringDetails == null) return null;
-
-            scoringDetails.Distance = route.Distance;
+            if (scoringDetails == null) return null;            
 
             return scoringDetails;
         }

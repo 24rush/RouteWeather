@@ -32,7 +32,7 @@ namespace api.Controllers
                     Latitude = double.Parse(p.Attribute("lat")!.Value),
                     Longitude = double.Parse(p.Attribute("lon")!.Value),
                     Elevation = p.Element(ns + "ele") is { } ele
-                        ? double.Parse(ele.Value)
+                        ? (int)(double.Parse(ele.Value))
                         : 0
                 })
                 .ToList();

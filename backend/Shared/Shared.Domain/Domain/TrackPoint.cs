@@ -6,7 +6,8 @@ namespace Shared.Domain.Domain
     {
         public double Latitude { get; set; }
         public double Longitude { get; set; }
-        public double? Elevation { get; set; }
+        public int? Elevation { get; set; }
+        public int? Bearing { get; set; }
         public Coordinate Coordinate => new Coordinate(Longitude, Latitude);
     };
 
