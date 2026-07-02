@@ -50,8 +50,16 @@ export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: num
 
   const hue = Math.max(0, 120 - (totalScore * 1.2));
 
-  const alpha = overrideAlpha !== undefined ? overrideAlpha : (isSelected ? 0.9 : 0.7);
-  return `hsla(${hue}, 70%, 40%, ${alpha})`;
+  const alpha = overrideAlpha !== undefined ? overrideAlpha : (isSelected ? 0.9 : 0.8);
+  return `hsla(${hue}, 100%, 50%, ${alpha})`;
+};
+
+export const getTempColor = (temp?: number) => {
+  if (temp == undefined) return 'text.primary';
+  if (temp < 0) return '#0066b7'; // very cold - blue
+  if (temp < 15) return '#62ff69'; // proper - green
+  if (temp < 30) return '#ffbc59'; // highish - orange
+  return '#ce4036'; // very high - red
 };
 
 export const decodePolyline = (str: string, precision: number = 5) => {
@@ -94,4 +102,9 @@ export const decodePolyline = (str: string, precision: number = 5) => {
   }
 
   return coordinates;
+};
+export const stepToHourString = (step: number, baseTime: Date): string => {
+  const date = new Date(baseTime.getTime() + step * 3600 * 1000 / 2);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };

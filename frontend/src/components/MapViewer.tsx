@@ -4,6 +4,7 @@ import type { RouteScoringDetails } from '../types';
 import { getWeatherColor, getWindColor, decodePolyline } from '../utils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useTheme } from '@mui/material/styles';
 
 // Fix for default marker icons in React Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -22,7 +23,8 @@ interface MapViewerProps {
   setDrawnPoints: React.Dispatch<React.SetStateAction<[number, number][]>>;
 }
 
-const createWeatherIcon = (windDirection: number, windSpeed: number, maxWindSpeed: number) => {
+const createWeatherIcon = (windDirection: number, windSpeed: number, maxWindSpeed: number, theme: any) => {
+
   const minHeight = 24;
   const maxHeight = 84;
   const rawHeight = maxWindSpeed > 0 ? (windSpeed / maxWindSpeed) * maxHeight : 0;
@@ -34,7 +36,7 @@ const createWeatherIcon = (windDirection: number, windSpeed: number, maxWindSpee
   return new L.DivIcon({
     html: `
       <div style="position: relative; width: 84px; height: 84px; display: flex; align-items: center; justify-content: center;">
-        <div style="position: absolute; background-color: #195c96ff; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5); z-index: 2;"></div>
+          <div style="position: absolute; background-color: ${theme.palette.primary.main}; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid ${theme.palette.background.paper}; box-shadow: 0 0 4px rgba(0,0,0,0.5); z-index: 2;"></div>
         ${showArrow ? `
         <div style="position: absolute; transform: rotate(${windDirection}deg); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1;">
       <svg width="24" height="${height}" viewBox="0 0 24 ${height}" fill="none" stroke="${arrowColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(255,255,255,0.8));">
@@ -50,10 +52,10 @@ const createWeatherIcon = (windDirection: number, windSpeed: number, maxWindSpee
   });
 };
 
-const createChevronIcon = (rotation: number) => new L.DivIcon({
+const createChevronIcon = (rotation: number, theme: any) => new L.DivIcon({
   html: `
     <div style="transform: rotate(${rotation}deg); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffa474ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.4));">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${theme.palette.warning.main}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(0,0,0,0.4));">
         <polyline points="18 15 12 9 6 15"></polyline>
       </svg>
     </div>
@@ -204,6 +206,7 @@ function DrawingHandler({ isDrawingMode, setDrawnPoints }: { isDrawingMode: bool
 }
 
 export default function MapViewer({ data, weatherCards, selectedCardIndex, isDrawingMode, drawnPoints, setDrawnPoints }: MapViewerProps) {
+  const theme = useTheme();
   const maxWindSpeed = useMemo(() => {
     let max = 0;
     for (const card of weatherCards) {
@@ -277,20 +280,19 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
       <BoundsFitter positions={routePositions} />
 
       {drawnPoints.length > 0 && (
-        <Polyline positions={drawnPoints} pathOptions={{ color: '#ff4444', weight: 4, dashArray: '8, 8' }} />
+        <Polyline positions={drawnPoints} pathOptions={{ color: theme.palette.error.main, weight: 4, dashArray: '8, 8' }} />
       )}
 
       {routePositions.length > 0 && (
-        <Polyline positions={routePositions} pathOptions={{ color: '#1976d2', weight: 4, opacity: 0.8 }} />
+        <Polyline positions={routePositions} pathOptions={{ color: theme.palette.primary.main, weight: 4, opacity: 0.8 }} />
       )}
 
-      {routeChevrons.map((c, index) => (
-        <Marker key={`chevron-${index}`} position={[c.lat, c.lng]} icon={createChevronIcon(c.rotation)} interactive={false} keyboard={false} />
-      ))}
+      {routeChevrons.map((c, index) => <Marker key={`chevron-${index}`} position={[c.lat, c.lng]} icon={createChevronIcon(c.rotation, theme)} interactive={false} keyboard={false} />
+      )}
 
       {weatherCards.map((m, index) => (
         m.forecast && (
-          <Marker key={index} position={[m.lat, m.lng]} icon={createWeatherIcon(m.forecast.windDirection10m, m.forecast.windSpeed10m, maxWindSpeed)} zIndexOffset={index === selectedCardIndex ? 1000 : 0}>
+          <Marker key={index} position={[m.lat, m.lng]} icon={createWeatherIcon(m.forecast.windDirection10m, m.forecast.windSpeed10m, maxWindSpeed, theme)} zIndexOffset={index === selectedCardIndex ? 1000 : 0}>
             {index === selectedCardIndex && (
               <Tooltip direction="top" offset={[0, -10]} className="weather-tooltip" permanent={true}>
                 <div style={{
@@ -302,8 +304,9 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
                   backgroundColor: getWeatherColor(m.forecast, true, m.bearing),
                   borderRadius: '4px',
                   boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                  color: 'rgba(23, 23, 23, 1)',
+                  border: '1px solid',
+                  borderColor: theme.palette.divider,
+                  color: theme.palette.text.primary,
                 }}>
                   <span style={{ fontWeight: 700, fontSize: '13px' }}>{m.forecast.temperature2m.toFixed(0)}°C</span>
                   <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.windSpeed10m.toFixed(0)} km/h</span>

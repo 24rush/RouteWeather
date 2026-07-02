@@ -2,7 +2,7 @@ import React, { useState, useRef, useDeferredValue } from 'react';
 import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, IconButton, List, ListItem, ListItemButton, ListItemText } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails, HourlyForecastAtOMPoint } from '../types';
-import { getWeatherColor, decodePolyline } from '../utils';
+import { getWeatherColor, decodePolyline, getTempColor, stepToHourString } from '../utils';
 import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, East, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air } from '@mui/icons-material';
 import { api } from '../api';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceArea } from 'recharts';
@@ -158,7 +158,6 @@ export default function Controls({
     scrollRef.current.scrollLeft = scrollLeft - walk;
   };
 
-  let startTimeDisplay = '';
   let durationDisplay = '';
   let baseTimeMs = 0;
 
@@ -173,9 +172,6 @@ export default function Controls({
     baseTimeMs = baseDate.getTime();
 
     const stepMs = 30 * 60 * 1000;
-    const startMs = baseTimeMs + timeRange[0] * stepMs;
-    startTimeDisplay = new Date(startMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-
     const durationMs = (timeRange[1] - timeRange[0]) * stepMs;
     const durationHours = Math.floor(durationMs / (60 * 60 * 1000));
     const durationMins = (durationMs % (60 * 60 * 1000)) / (60 * 1000);
@@ -679,12 +675,13 @@ export default function Controls({
         display: 'flex',
         flexDirection: 'column',
         backdropFilter: 'blur(3px)',
-        backgroundColor: 'rgba(30, 30, 30, 0.05)',
+        backgroundColor: 'background.paper',
         borderRadius: 3,
-        border: '1px solid rgba(255, 255, 255, 0.05)',
+        border: '1px solid',
+        borderColor: 'divider',
       }}
     >
-      <Box sx={{ display: 'flex', flexDirection: 'column', color: 'black' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
           {activeTab === 0 && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
@@ -693,13 +690,13 @@ export default function Controls({
                   component="label"
                   variant="contained"
                   disabled={isUploading || isDrawingMode}
-                  startIcon={isUploading ? <CircularProgress size={20} sx={{ color: 'white' }} /> : <FileUploadOutlined />}
+                  startIcon={isUploading ? <CircularProgress size={20} sx={{}} /> : <FileUploadOutlined />}
                   sx={{
                     textTransform: 'none',
                     borderRadius: 1,
-                    color: '#fff',
-                    backgroundColor: 'rgba(25, 118, 210, 0.9)',
-                    '&:hover': { backgroundColor: 'rgba(21, 101, 192, 1)' }
+                    color: 'text.primary',
+                    backgroundColor: 'primary.main',
+                    '&:hover': { backgroundColor: 'primary.dark' }
                   }}
                 >
                   {isUploading ? 'Uploading...' : 'Upload GPX'}
@@ -714,9 +711,9 @@ export default function Controls({
                   sx={{
                     textTransform: 'none',
                     borderRadius: 1,
-                    color: '#fff',
-                    backgroundColor: isDrawingMode ? undefined : 'rgba(25, 118, 210, 0.9)',
-                    '&:hover': { backgroundColor: isDrawingMode ? undefined : 'rgba(21, 101, 192, 1)' }
+                    color: 'text.primary',
+                    backgroundColor: isDrawingMode ? undefined : 'primary.main',
+                    '&:hover': { backgroundColor: isDrawingMode ? undefined : 'primary.dark' }
                   }}
                 >
                   {isDrawingMode ? 'Finish' : 'Draw Route'}
@@ -730,7 +727,6 @@ export default function Controls({
                     sx={{
                       textTransform: 'none',
                       borderRadius: 1,
-                      color: '#fff',
                       backgroundColor: 'rgba(211, 47, 47, 0.9)',
                       '&:hover': { backgroundColor: 'rgba(198, 40, 40, 1)' }
                     }}
@@ -742,7 +738,7 @@ export default function Controls({
               </Box>
 
               <Box sx={{ width: '100%' }}>
-                <Typography sx={{ pl: 0.25, mt: 1, fontSize: '0.8rem', color: 'rgba(0, 0, 0, 0.7)', fontWeight: 600 }}>
+                <Typography sx={{ pl: 0.25, mt: 1, fontSize: '0.8rem', fontWeight: 600 }}>
                   Upcoming
                 </Typography>
                 <List sx={{ maxHeight: 200, overflow: 'auto', width: '100%', borderRadius: 1 }}>
@@ -758,16 +754,16 @@ export default function Controls({
                         <ListItem key={route.id} disablePadding sx={{ mb: 0.5 }}>
                           <ListItemButton
                             onClick={() => onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined)}
-                            sx={{ bgcolor: '#fff', borderRadius: 1, px: 1, '&:hover': { bgcolor: '#e0e0e0' } }}
+                            sx={{ bgcolor: 'background.paper', borderRadius: 1, px: 1, '&:hover': { bgcolor: 'action.hover' } }}
                           >
                             <ListItemText
                               primary={
-                                <Typography sx={{ fontSize: '0.8rem', color: 'rgba(0, 0, 0, 0.7)', fontWeight: 600 }}>
+                                <Typography sx={{ fontSize: '0.8rem', color: 'text.primary', fontWeight: 600 }}>
                                   {route.name}
                                 </Typography>
                               }
                               secondary={
-                                <Typography sx={{ fontSize: '0.75rem', color: 'rgba(0, 0, 0, 0.7)' }}>
+                                <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
                                   {`${startTimeStr ? dateStart + ' ' + startTimeStr + ' • ' : ''}${distKm} km${route.elevation ? ` • ${route.elevation}m 📈` : ''}`}
                                 </Typography>
                               }
@@ -794,9 +790,8 @@ export default function Controls({
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 1
                 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65em', color: '#4b4b4bff' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65em', color: 'text.secondary' }}>
                     OPTIMAL START TIME
                   </Typography>
                   {bestStartData.noOptimalTime ? (
@@ -893,15 +888,15 @@ export default function Controls({
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          color: 'rgba(0, 0, 0, 0.7)',
+                          color: '#1E293B',
                           backgroundColor: getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing),
-                          borderRadius: 1,
+                          borderRadius: 0.5,
                           cursor: 'pointer',
                           userSelect: 'none',
                           boxShadow: 'none',
                           '&:active': { boxShadow: 'none' },
                           '&:focus': { boxShadow: 'none' },
-                          border: 'none'
+                          borderTop: `3px solid ${getTempColor(card.forecast?.temperature2m)}`,
                         }}
                       >
                         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -938,12 +933,12 @@ export default function Controls({
               }}>
                 <ResponsiveContainer width="100%" height="100%" style={{ outline: 'none' }}>
                   <AreaChart data={elevationData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }} style={{ outline: 'none' }}>
-                    <XAxis dataKey="distance" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(val) => val.toFixed(0) + 'km'} tick={{ fontSize: 10 }} />
+                    <XAxis dataKey="distance" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(val) => val.toFixed(0) + 'km'} tick={{ fontSize: 10, fill: '#fff' }} />
                     <YAxis
                       dataKey="elevation"
                       domain={yDomain}
                       tickFormatter={(val) => val.toFixed(0) + 'm'}
-                      tick={{ fontSize: 10 }}
+                      tick={{ fontSize: 10, fill: '#fff' }}
                     />
                     {elevationSections.map((sec) => (
                       <ReferenceArea
@@ -955,7 +950,7 @@ export default function Controls({
                         strokeOpacity={0}
                       />
                     ))}
-                    <Area type="monotone" dataKey="elevation" stroke="#1976d2" fill="#90caf9" fillOpacity={0.5} isAnimationActive={false} activeDot={false} />
+                    <Area type="monotone" dataKey="elevation" stroke="#2295f3ff" fill="#61b8ffff" fillOpacity={0.75} isAnimationActive={false} activeDot={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </Box>
@@ -973,7 +968,7 @@ export default function Controls({
                     }
                     touchStartXRef.current = null;
                   }}
-                  sx={{ display: 'flex', alignItems: 'center', mt: 0.5, backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, p: 0.5 }}
+                  sx={{ display: 'flex', alignItems: 'center', mt: 0.5, color: 'text.secondary', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, p: 0.5 }}
                 >
                   <IconButton
                     size="small"
@@ -989,7 +984,7 @@ export default function Controls({
                       const activeSec = sectionWeatherData[activeSectionIndex];
                       if (!activeSec) return null;
                       return (
-                        <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between', color: '#000' }}>
                           <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                               <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '11px', opacity: 0.8 }}>
@@ -1063,10 +1058,25 @@ export default function Controls({
           )}
 
           {activeTab !== 0 && hasData && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', mt: 'auto' }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', pt: 0.25 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>Start at {startTimeDisplay}</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', mt: 1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', pt: 4 }}>
+                <Slider
+                  sx={{
+                    ml: 1,
+                    color: 'primary.main',
+                    '& .MuiSlider-thumb': {},
+                  }}
+                  value={timeRange}
+                  onChange={handleSliderChange}
+                  step={1}
+                  min={0}
+                  max={maxSliderSteps}
+                  disableSwap
+                  // Show formatted time on each thumb
+                  valueLabelDisplay="on"
+                  valueLabelFormat={(step) => stepToHourString(step, new Date(baseTimeMs))}
+                />
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
                   {currentStartData && (
                     <>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
@@ -1089,21 +1099,6 @@ export default function Controls({
                   )}
                 </Box>
               </Box>
-              <Slider
-                sx={{
-                  ml: 1, color: '#38f', '& .MuiSlider-thumb': {
-                    borderRadius: '1px',
-                    width: '12px',
-                  },
-                }}
-                value={timeRange}
-                onChange={handleSliderChange}
-                step={1}
-                min={0}
-                max={maxSliderSteps}
-                disableSwap
-                valueLabelDisplay="off"
-              />
               <Typography variant="caption" sx={{ fontWeight: 700, textAlign: 'center', mt: 0.75 }}>
                 {((data?.physics.distances[data?.physics.distances.length - 1] ?? 0) / 1000.0).toFixed(0)}km in {durationDisplay}
               </Typography>
