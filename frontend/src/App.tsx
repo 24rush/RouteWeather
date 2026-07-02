@@ -13,7 +13,12 @@ function App() {
 
   const getBaseDate = (dateStr?: string | null) => {
     const baseDate = dateStr ? new Date(dateStr) : new Date();
-    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
+    const m = baseDate.getMinutes();
+    if (m < 15) {
+      baseDate.setMinutes(0, 0, 0);
+    } else {
+      baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
+    }
     return baseDate;
   };
 

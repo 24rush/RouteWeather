@@ -130,7 +130,10 @@
             submitBtn.classList.add('disabled');
 
             try {
-                const response = await fetch('/api/gpx/upload', {
+                const isProd = window.location.hostname !== 'localhost';
+                const baseUrl = isProd ? 'https://routeweather-api.politecoast-991ad491.centralus.azurecontainerapps.io' : 'http://localhost:5194';
+
+                const response = await fetch(`${baseUrl}/api/gpx/upload`, {
                     method: 'POST',
                     body: formData
                 });

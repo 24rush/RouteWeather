@@ -164,7 +164,12 @@ export default function Controls({
 
   if (hasData) {
     const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
-    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
+    if (baseDate.getMinutes() < 15) {
+      baseDate.setMinutes(0, 0, 0);
+    } else {
+      baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
+    }
+
     baseTimeMs = baseDate.getTime();
 
     const stepMs = 30 * 60 * 1000;
@@ -594,7 +599,12 @@ export default function Controls({
     const durationSteps = timeRange[1] - timeRange[0];
 
     const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
-    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
+    const m = baseDate.getMinutes();
+    if (m < 15) {
+      baseDate.setMinutes(0, 0, 0);
+    } else {
+      baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
+    }
     const baseTimeMs = baseDate.getTime();
 
     // Evaluate up to MAX_START_STEPS
