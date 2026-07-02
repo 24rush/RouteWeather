@@ -1,10 +1,50 @@
 import React, { useState, useRef, useDeferredValue } from 'react';
-import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, IconButton } from '@mui/material';
+import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, IconButton, List, ListItem, ListItemButton, ListItemText } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails, HourlyForecastAtOMPoint } from '../types';
-import { getWeatherColor } from '../utils';
+import { getWeatherColor, decodePolyline } from '../utils';
 import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, East, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air } from '@mui/icons-material';
+import { api } from '../api';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceArea } from 'recharts';
+
+
+
+const RouteThumbnail = ({ polylineStr, width = 60, height = 40 }: { polylineStr?: string, width?: number, height?: number }) => {
+  const points = React.useMemo(() => {
+    if (!polylineStr) return [];
+    try {
+      return decodePolyline(polylineStr);
+    } catch (e) {
+      return [];
+    }
+  }, [polylineStr]);
+
+  if (points.length < 2) return null;
+
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const [lat, lng] of points) {
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+  }
+
+  const latRange = maxLat - minLat || 1;
+  const lngRange = maxLng - minLng || 1;
+  const padding = 4;
+
+  const pathData = points.map(([lat, lng], i) => {
+    const x = padding + ((lng - minLng) / lngRange) * (width - padding * 2);
+    const y = padding + (1 - (lat - minLat) / latRange) * (height - padding * 2);
+    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+
+  return (
+    <svg width={width} height={height} style={{ flexShrink: 0, opacity: 0.6, marginLeft: 'auto' }}>
+      <path d={pathData} fill="none" stroke="#fc5200" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+};
 
 interface ControlsProps {
   onFileUpload: (file: File) => void;
@@ -20,6 +60,8 @@ interface ControlsProps {
   isDrawingMode: boolean;
   onToggleDrawingMode: (enabled: boolean) => void;
   onClearRoute: () => void;
+  onLoadRoute: (id: string, date?: string) => void;
+  routeDateStr: string | null;
 }
 
 export default function Controls({
@@ -35,7 +77,9 @@ export default function Controls({
   weatherCards,
   isDrawingMode,
   onToggleDrawingMode,
-  onClearRoute
+  onClearRoute,
+  onLoadRoute,
+  routeDateStr
 }: ControlsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number | null>(null);
@@ -44,10 +88,15 @@ export default function Controls({
   const [scrollLeft, setScrollLeft] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+  const [ownerRoutes, setOwnerRoutes] = useState<any[]>([]);
 
   const handleAlertTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
   };
+
+  const hasFetchedRoutes = useRef(false);
+
+  // Routes are now fetched explicitly on tab click
 
   const hasData = data && data.weatherPoints && Object.keys(data.weatherPoints).length > 0;
 
@@ -61,6 +110,28 @@ export default function Controls({
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
+    if (newValue === 0 && !hasFetchedRoutes.current) {
+      hasFetchedRoutes.current = true;
+      api.getOwnerRoutes("rw")
+        .then(routes => {
+          const now = new Date();
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+          const filteredRoutes = (routes || []).filter(r => {
+            if (!r.startTime) return true;
+            return new Date(r.startTime).getTime() >= startOfToday;
+          }).sort((a, b) => {
+            if (!a.startTime && !b.startTime) return 0;
+            if (!a.startTime) return 1;
+            if (!b.startTime) return -1;
+            return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+          });
+          setOwnerRoutes(filteredRoutes);
+        })
+        .catch(err => {
+          console.error("Failed to fetch owner routes", err);
+          hasFetchedRoutes.current = false;
+        });
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -92,7 +163,7 @@ export default function Controls({
   let baseTimeMs = 0;
 
   if (hasData) {
-    const baseDate = new Date();
+    const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
     baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
     baseTimeMs = baseDate.getTime();
 
@@ -364,41 +435,48 @@ export default function Controls({
     let [newStart, newEnd] = newValue;
     const currentDuration = timeRange[1] - timeRange[0];
 
-    // Enforce max start time
-    if (newStart > MAX_START_STEPS) {
-      newStart = MAX_START_STEPS;
+    let absoluteMaxSteps = 24; // fallback
+    if (data?.forecastAtWeatherPoints) {
+      const pts = Object.values(data.forecastAtWeatherPoints);
+      if (pts.length > 0 && pts[0].forecastAtIntervals) {
+        const intervalsCount = Object.keys(pts[0].forecastAtIntervals).length;
+        absoluteMaxSteps = Math.max(2, (intervalsCount - 1) * 2);
+      }
     }
 
-    let maxStartIndex = maxSliderSteps;
-
-    if (activeThumb === 0) {
-      if (newStart > maxStartIndex) {
-        newStart = maxStartIndex;
+    if (activeThumb === 1) {
+      // Dragging right thumb resizes the window
+      newStart = timeRange[0]; // keep left side anchored
+      if (newEnd <= newStart) {
+        newEnd = newStart + 1;
       }
-      newEnd = newStart + currentDuration;
+      if (newEnd >= maxSliderSteps && maxSliderSteps < absoluteMaxSteps) {
+        setMaxSliderSteps(Math.min(absoluteMaxSteps, maxSliderSteps + 12));
+      } else if (newEnd <= maxSliderSteps - 12 && maxSliderSteps > 24) {
+        setMaxSliderSteps(Math.max(24, maxSliderSteps - 12));
+      }
     } else {
-      if (newStart > maxStartIndex) {
-        newStart = maxStartIndex;
-      }
-      const maxDurationSteps = 12 * 2; // 12 hours = 24 steps
-      if (newEnd - newStart > maxDurationSteps) {
-        newEnd = newStart + maxDurationSteps;
+      // Dragging left thumb shifts the whole window
+      newEnd = newStart + currentDuration;
+      if (newEnd >= maxSliderSteps && maxSliderSteps < absoluteMaxSteps) {
+        setMaxSliderSteps(Math.min(absoluteMaxSteps, maxSliderSteps + 12));
+      } else if (newEnd <= maxSliderSteps - 12 && maxSliderSteps > 24) {
+        setMaxSliderSteps(Math.max(24, maxSliderSteps - 12));
       }
     }
 
-    const midnight = new Date(baseTimeMs);
-    midnight.setHours(24, 0, 0, 0);
-    const minMaxSteps = Math.max(8, Math.floor((midnight.getTime() - baseTimeMs) / (30 * 60 * 1000)));
-
-    if (newEnd >= maxSliderSteps - 1) {
-      const newMax = Math.min(MAX_START_STEPS + 24, maxSliderSteps + 8);
-      if (newMax > maxSliderSteps) {
-        setMaxSliderSteps(newMax);
+    // Clamp within 0 to maxSliderSteps (or absoluteMaxSteps if expanding)
+    const currentMax = Math.min(absoluteMaxSteps, Math.max(maxSliderSteps, newEnd));
+    if (newEnd > currentMax) {
+      newEnd = currentMax;
+      if (activeThumb === 0) {
+        newStart = newEnd - currentDuration;
       }
-    } else if (newEnd < maxSliderSteps - 8 && maxSliderSteps > minMaxSteps) {
-      const newMax = Math.max(minMaxSteps, newEnd + 6);
-      if (newMax < maxSliderSteps) {
-        setMaxSliderSteps(newMax);
+    }
+    if (newStart < 0) {
+      newStart = 0;
+      if (activeThumb === 0) {
+        newEnd = currentDuration;
       }
     }
 
@@ -415,7 +493,7 @@ export default function Controls({
     const HEADWIND_WEIGHT = 0.5; // Penalty per km/h of headwind
     const TAILWIND_BONUS = 0.2; // Bonus per km/h of tailwind
 
-    const baseDate = new Date();
+    const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
     baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
     const baseTimeMs = baseDate.getTime();
     const stepMs = 30 * 60 * 1000;
@@ -515,7 +593,7 @@ export default function Controls({
 
     const durationSteps = timeRange[1] - timeRange[0];
 
-    const baseDate = new Date();
+    const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
     baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
     const baseTimeMs = baseDate.getTime();
 
@@ -546,14 +624,23 @@ export default function Controls({
     }
 
     const startMs = baseTimeMs + bestStep * 30 * 60 * 1000;
+    const startDateObj = new Date(startMs);
+    const today = new Date();
+    let prefix = '';
+    if (startDateObj.getDate() === today.getDate() && startDateObj.getMonth() === today.getMonth() && startDateObj.getFullYear() === today.getFullYear()) {
+      prefix = 'Today ';
+    } else {
+      prefix = startDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ';
+    }
+
     return {
       noOptimalTime: false,
-      timeStr: new Date(startMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      timeStr: prefix + startDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
       avgTemp: bestTemp,
       avgRain: bestRain,
       avgWind: bestWind
     };
-  }, [hasData, data, timeRange, MAX_START_STEPS]);
+  }, [hasData, data, timeRange, MAX_START_STEPS, routeDateStr]);
 
   const currentStartData = React.useMemo(() => {
     if (!hasData || !data) return null;
@@ -590,35 +677,22 @@ export default function Controls({
       <Box sx={{ display: 'flex', flexDirection: 'column', color: 'black' }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
           {activeTab === 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: 2, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
               <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                 <Button
-                  component="label" variant='contained'
+                  component="label"
+                  variant="contained"
                   disabled={isUploading || isDrawingMode}
+                  startIcon={isUploading ? <CircularProgress size={20} sx={{ color: 'white' }} /> : <FileUploadOutlined />}
                   sx={{
-                    width: '90px',
-                    height: '90px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 1,
-                    borderRadius: 2,
                     textTransform: 'none',
-                    backgroundColor: 'rgba(25, 118, 210, 0.9)',
-                    '&:hover': { backgroundColor: 'rgba(21, 101, 192, 1)' },
-                    fontWeight: 600,
-                    fontSize: '0.75em',
-                    lineHeight: 1.2,
-                    boxShadow: 'none',
-                    '&:active': { boxShadow: 'none' },
-                    '&:focus': { boxShadow: 'none' },
-                    border: 'none',
+                    borderRadius: 1,
                     color: '#fff',
-                    whiteSpace: 'pre-wrap',
-                    textAlign: 'center'
+                    backgroundColor: 'rgba(25, 118, 210, 0.9)',
+                    '&:hover': { backgroundColor: 'rgba(21, 101, 192, 1)' }
                   }}
                 >
-                  {isUploading ? <CircularProgress size={28} sx={{ color: 'white' }} /> : <FileUploadOutlined sx={{ fontSize: 32 }} />}
-                  <span>{isUploading ? 'Uploading...' : 'UPLOAD\nGPX'}</span>
+                  {isUploading ? 'Uploading...' : 'Upload GPX'}
                   <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
                 </Button>
                 <Button
@@ -626,30 +700,16 @@ export default function Controls({
                   color={isDrawingMode ? "secondary" : "primary"}
                   onClick={() => onToggleDrawingMode(!isDrawingMode)}
                   disabled={isUploading}
+                  startIcon={<GestureOutlined />}
                   sx={{
-                    width: '90px',
-                    height: '90px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 1,
-                    borderRadius: 2,
                     textTransform: 'none',
-                    backgroundColor: isDrawingMode ? undefined : 'rgba(25, 118, 210, 0.9)',
-                    '&:hover': { backgroundColor: isDrawingMode ? undefined : 'rgba(21, 101, 192, 1)' },
-                    fontWeight: 600,
-                    fontSize: '0.75em',
-                    lineHeight: 1.2,
-                    boxShadow: 'none',
-                    '&:active': { boxShadow: 'none' },
-                    '&:focus': { boxShadow: 'none' },
-                    border: 'none',
+                    borderRadius: 1,
                     color: '#fff',
-                    whiteSpace: 'pre-wrap',
-                    textAlign: 'center'
+                    backgroundColor: isDrawingMode ? undefined : 'rgba(25, 118, 210, 0.9)',
+                    '&:hover': { backgroundColor: isDrawingMode ? undefined : 'rgba(21, 101, 192, 1)' }
                   }}
                 >
-                  <GestureOutlined sx={{ fontSize: 32 }} />
-                  <span>{isDrawingMode ? 'FINISH\nDRAWING' : 'DRAW\nROUTE'}</span>
+                  {isDrawingMode ? 'Finish' : 'Draw Route'}
                 </Button>
                 {isDrawingMode && (
                   <Button
@@ -658,17 +718,59 @@ export default function Controls({
                     onClick={onClearRoute}
                     disabled={isUploading}
                     sx={{
-                      minWidth: '40px',
-                      height: '90px',
-                      borderRadius: 2,
+                      textTransform: 'none',
+                      borderRadius: 1,
+                      color: '#fff',
                       backgroundColor: 'rgba(211, 47, 47, 0.9)',
-                      '&:hover': { backgroundColor: 'rgba(198, 40, 40, 1)' },
+                      '&:hover': { backgroundColor: 'rgba(198, 40, 40, 1)' }
                     }}
                     title="Clear Route and Load Demo"
                   >
-                    <DeleteOutlineIcon sx={{ fontSize: 24 }} />
+                    <DeleteOutlineIcon fontSize="small" />
                   </Button>
                 )}
+              </Box>
+
+              <Box sx={{ width: '100%' }}>
+                <Typography sx={{ pl: 0.25, mt: 1, fontSize: '0.8rem', color: 'rgba(0, 0, 0, 0.7)', fontWeight: 600 }}>
+                  Upcoming
+                </Typography>
+                <List sx={{ maxHeight: 200, overflow: 'auto', width: '100%', borderRadius: 1 }}>
+                  {ownerRoutes.length === 0 ? (
+                    <Typography variant="body2" sx={{ p: 2, textAlign: 'center', color: 'text.secondary', fontSize: '0.8rem' }}>No routes found.</Typography>
+                  ) : (
+                    ownerRoutes.map(route => {
+                      const startTimeStr = route.startTime ? new Date(route.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+                      const dateStart = new Date(route.startTime).toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' }) + ' ';
+
+                      const distKm = (route.distance / 1000).toFixed(1);
+                      return (
+                        <ListItem key={route.id} disablePadding sx={{ mb: 0.5 }}>
+                          <ListItemButton
+                            onClick={() => onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined)}
+                            sx={{ bgcolor: '#fff', borderRadius: 1, px: 1, '&:hover': { bgcolor: '#e0e0e0' } }}
+                          >
+                            <ListItemText
+                              primary={
+                                <Typography sx={{ fontSize: '0.8rem', color: 'rgba(0, 0, 0, 0.7)', fontWeight: 600 }}>
+                                  {route.name}
+                                </Typography>
+                              }
+                              secondary={
+                                <Typography sx={{ fontSize: '0.75rem', color: 'rgba(0, 0, 0, 0.7)' }}>
+                                  {`${startTimeStr ? dateStart + ' ' + startTimeStr + ' • ' : ''}${distKm} km${route.elevation ? ` • ${route.elevation}m 📈` : ''}`}
+                                </Typography>
+                              }
+                            />
+                            {route.routePolyline && (
+                              <RouteThumbnail polylineStr={route.routePolyline} />
+                            )}
+                          </ListItemButton>
+                        </ListItem>
+                      );
+                    })
+                  )}
+                </List>
               </Box>
             </Box>
           )}
@@ -680,15 +782,17 @@ export default function Controls({
                   borderRadius: 1,
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center'
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 1
                 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.55em', color: '#4b4b4bff' }}>
+                  <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65em', color: '#4b4b4bff' }}>
                     OPTIMAL START TIME
                   </Typography>
                   {bestStartData.noOptimalTime ? (
-                    <Typography variant="caption" sx={{ fontWeight: 600, mt: 0.25 }}>No daylight times left today</Typography>
+                    <Typography variant="caption" sx={{ fontWeight: 600 }}>No daylight times left today</Typography>
                   ) : (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'center', mt: 0.25 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
                       <Typography variant="caption" sx={{ fontWeight: 700 }}>{bestStartData.timeStr}</Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                         <Thermostat sx={{ fontSize: 14 }} />
@@ -779,6 +883,7 @@ export default function Controls({
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
+                          color: 'rgba(0, 0, 0, 0.7)',
                           backgroundColor: getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing),
                           borderRadius: 1,
                           cursor: 'pointer',
@@ -846,7 +951,7 @@ export default function Controls({
               </Box>
 
               {sectionWeatherData.length > 0 && (
-                <Box 
+                <Box
                   onTouchStart={handleAlertTouchStart}
                   onTouchEnd={(e) => {
                     if (touchStartXRef.current === null) return;

@@ -9,12 +9,24 @@ import { getBearing, getDistance } from './utils';
 function App() {
   const [data, setData] = useState<RouteScoringDetails | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([0, 4]); // Default 2 hours (4 * 30m)
-  const getInitialMaxSteps = () => {
-    const baseDate = new Date();
+  const [routeDateStr, setRouteDateStr] = useState<string | null>(null);
+
+  const getBaseDate = (dateStr?: string | null) => {
+    const baseDate = dateStr ? new Date(dateStr) : new Date();
     baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
-    const midnight = new Date(baseDate.getTime());
-    midnight.setHours(24, 0, 0, 0);
-    return Math.max(8, Math.floor((midnight.getTime() - baseDate.getTime()) / (30 * 60 * 1000)));
+    return baseDate;
+  };
+
+  const getInitialMaxSteps = (routeData?: RouteScoringDetails | null) => {
+    if (routeData?.forecastAtWeatherPoints) {
+      const pts = Object.values(routeData.forecastAtWeatherPoints);
+      if (pts.length > 0 && pts[0].forecastAtIntervals) {
+        const intervalsCount = Object.keys(pts[0].forecastAtIntervals).length;
+        const absMax = Math.max(2, (intervalsCount - 1) * 2);
+        return Math.min(24, absMax);
+      }
+    }
+    return 24; // Fixed 12 hours fallback
   };
 
   const getInitialDurationSteps = (routeData: RouteScoringDetails | null) => {
@@ -22,7 +34,7 @@ function App() {
     if (distance === 0) return 4;
     const speed = distance < 20 ? 8 : 24;
     const hours = distance / speed;
-    return Math.max(1, Math.ceil(hours * 2));
+    return Math.min(24, Math.max(1, Math.ceil(hours * 2)));
   };
 
   const [maxSliderSteps, setMaxSliderSteps] = useState(getInitialMaxSteps());
@@ -41,10 +53,11 @@ function App() {
         "019f189f-5c4c-7d03-8843-f1c624d45342" :
         "019f189a-9332-7b11-a396-1653cb69553f");
       setData(homepageData);
+      setRouteDateStr(null);
 
-      // Set default time to the next full hour, max slider to midnight
+      const durationSteps = getInitialDurationSteps(homepageData);
       setMaxSliderSteps(getInitialMaxSteps());
-      //setTimeRange([0, getInitialDurationSteps(homepageData)]);
+      setTimeRange([0, durationSteps]);
     } catch (error) {
       console.error("Error fetching demo data:", error);
     } finally {
@@ -61,6 +74,7 @@ function App() {
     try {
       const homepageData = await api.uploadGpx(file);
       setData(homepageData);
+      setRouteDateStr(null);
 
       setMaxSliderSteps(getInitialMaxSteps());
       setTimeRange([0, getInitialDurationSteps(homepageData)]);
@@ -108,6 +122,7 @@ function App() {
     try {
       const homepageData = await api.uploadGpx(file);
       setData(homepageData);
+      setRouteDateStr(null);
       setMaxSliderSteps(getInitialMaxSteps());
       setTimeRange([0, getInitialDurationSteps(homepageData)]);
     } catch (error) {
@@ -139,8 +154,7 @@ function App() {
 
     const [startIndex, endIndex] = timeRange;
 
-    const baseDate = new Date();
-    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
+    const baseDate = getBaseDate(routeDateStr);
     const baseTimeMs = baseDate.getTime();
 
     const stepMs = 30 * 60 * 1000;
@@ -211,8 +225,36 @@ function App() {
       }
     }
 
-    return cards;
+    const uniqueCards: any[] = [];
+    const seenTimes = new Set();
+    for (const card of cards) {
+      if (!seenTimes.has(card.time)) {
+        seenTimes.add(card.time);
+        uniqueCards.push(card);
+      }
+    }
+
+    return uniqueCards;
   }, [data, timeRange]);
+
+  const handleLoadRoute = async (id: string, date?: string) => {
+    setIsUploading(true);
+    try {
+      setIsDrawingMode(false);
+      setDrawnPoints([]);
+      const homepageData = await api.getHomepageData(id, date);
+      setData(homepageData);
+      setRouteDateStr(date || null);
+
+      const durationSteps = getInitialDurationSteps(homepageData);
+      setMaxSliderSteps(getInitialMaxSteps());
+      setTimeRange([0, durationSteps]);
+    } catch (error) {
+      console.error("Error loading route:", error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <Box sx={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
@@ -245,6 +287,8 @@ function App() {
           isDrawingMode={isDrawingMode}
           onToggleDrawingMode={handleToggleDrawingMode}
           onClearRoute={fetchDemoData}
+          onLoadRoute={handleLoadRoute}
+          routeDateStr={routeDateStr}
         />
       </Box>
 

@@ -33,8 +33,10 @@ export const api = {
     return data;
   },
 
-  getHomepageData: async (id: string): Promise<RouteScoringDetails> => {
-    const response = await axios.get(`/api/homepage?id=${id}`);
+  getHomepageData: async (id: string, date?: string): Promise<RouteScoringDetails> => {
+    let url = `/api/homepage?id=${id}`;
+    if (date) url += `&date=${encodeURIComponent(date)}`;
+    const response = await axios.get(url);
     const data = response.data;
     if (data && typeof data.physics === 'string') {
       try {
@@ -44,5 +46,10 @@ export const api = {
       }
     }
     return data;
+  },
+
+  getOwnerRoutes: async (owner: string): Promise<any[]> => {
+    const response = await axios.get(`/api/gpx/${owner}`);
+    return response.data;
   },
 };
