@@ -57,8 +57,8 @@ export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: num
 export const getTempColor = (temp?: number) => {
   if (temp == undefined) return 'text.primary';
   if (temp < 0) return '#0066b7'; // very cold - blue
-  if (temp < 15) return '#62ff69'; // proper - green
-  if (temp < 30) return '#ffbc59'; // highish - orange
+  if (temp < 26) return '#51d057ff'; // proper - green
+  if (temp < 30) return '#faa423ff'; // highish - orange
   return '#ce4036'; // very high - red
 };
 

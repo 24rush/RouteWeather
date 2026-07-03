@@ -306,7 +306,7 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
                   boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
                   border: '1px solid',
                   borderColor: theme.palette.divider,
-                  color: theme.palette.text.primary,
+                  color: theme.palette.background.paper,
                 }}>
                   <span style={{ fontWeight: 700, fontSize: '13px' }}>{m.forecast.temperature2m.toFixed(0)}°C</span>
                   <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.windSpeed10m.toFixed(0)} km/h</span>
