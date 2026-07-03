@@ -51,16 +51,41 @@ export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: num
   const hue = Math.max(0, 120 - (totalScore * 1.2));
 
   const alpha = overrideAlpha !== undefined ? overrideAlpha : (isSelected ? 0.9 : 0.8);
-  return `hsla(${hue}, 100%, 50%, ${alpha})`;
+  return `hsla(${hue}, 95%, 50%, ${alpha})`;
 };
 
 export const getTempColor = (temp?: number) => {
-  if (temp == undefined) return 'text.primary';
-  if (temp < 0) return '#0066b7'; // very cold - blue
-  if (temp < 26) return '#51d057ff'; // proper - green
-  if (temp < 30) return '#faa423ff'; // highish - orange
-  return '#ce4036'; // very high - red
-};
+  if (temp == null) temp = 20;
+
+  const colorScale = [
+    { temp: 15, h: 200, s: 70, l: 50 }, // Cool Blue
+    { temp: 20, h: 140, s: 65, l: 45 }, // Comfortable Green
+    { temp: 24, h: 80, s: 70, l: 45 }, // Mild Yellow-Green
+    { temp: 27, h: 45, s: 85, l: 60 }, // Warm Yellow-Orange
+    { temp: 32, h: 15, s: 90, l: 60 }, // Hot Red-Orange
+  ];
+
+  // Handle edge cases
+  if (temp <= colorScale[0].temp) return colorScale[0];
+  if (temp >= colorScale[colorScale.length - 1].temp) return colorScale[colorScale.length - 1];
+
+  // Find the two bounding anchors
+  let i = 0;
+  while (temp > colorScale[i + 1].temp) i++;
+
+  const c1 = colorScale[i];
+  const c2 = colorScale[i + 1];
+
+  // Calculate interpolation factor (0.0 to 1.0)
+  const factor = (temp - c1.temp) / (c2.temp - c1.temp);
+
+  // Interpolate H, S, and L
+  const h = c1.h + (c2.h - c1.h) * factor;
+  const s = c1.s + (c2.s - c1.s) * factor;
+  const l = c1.l + (c2.l - c1.l) * factor;
+
+  return `hsl(${h.toFixed(1)}, ${s.toFixed(1)}%, ${l.toFixed(1)}%)`;
+}
 
 export const decodePolyline = (str: string, precision: number = 5) => {
   let index = 0;

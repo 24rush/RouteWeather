@@ -861,17 +861,21 @@ export default function Controls({
                     onMouseMove={handleMouseMove}
                     sx={{
                       display: 'flex',
-                      gap: .25,
+
                       overflowX: 'auto',
                       scrollbarWidth: 'none',
                       cursor: isDragging ? 'grabbing' : 'grab',
                       '&::-webkit-scrollbar': { height: 6 },
-                      '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3 },
+                      '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 0 },
                     }}
                   >
-                    {weatherCards.filter((card, index, self) => index === self.findIndex(c => c.time === card.time)).map((card, idx) => {
+                    {weatherCards.filter((card, index, self) => index === self.findIndex(c => c.time === card.time)).map((card, idx, uniqueCards) => {
                       const date = new Date(card.time);
                       const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+                      const nextCard = uniqueCards[idx + 1] || card;
+                      const currentBg = getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing);
+                      const nextBg = getWeatherColor(nextCard.forecast, (idx + 1) === selectedCardIndex, nextCard.bearing);
 
                       const cardsInInterval = weatherCards.filter(c => c.time === card.time);
                       let sumSin = 0;
@@ -919,14 +923,15 @@ export default function Controls({
                             flexDirection: 'column',
                             alignItems: 'center',
                             color: '#1E293B',
-                            backgroundColor: getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing),
-                            borderRadius: 0.5,
+                            background: `linear-gradient(to right, ${currentBg}, ${nextBg})`,
+                            borderRadius: 0,
                             cursor: 'pointer',
                             userSelect: 'none',
                             boxShadow: 'none',
+                            borderTop: `3px solid ${getTempColor(card.forecast?.temperature2m)}`,
+                            borderRight: idx === uniqueCards.length - 1 ? 'none' : '1px solid rgba(0, 0, 0, .4)',
                             '&:active': { boxShadow: 'none' },
                             '&:focus': { boxShadow: 'none' },
-                            borderTop: `3px solid ${getTempColor(card.forecast?.temperature2m)}`,
                           }}
                         >
                           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
