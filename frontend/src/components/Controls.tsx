@@ -3,7 +3,7 @@ import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, Ic
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails, HourlyForecastAtOMPoint } from '../types';
 import { getWeatherColor, decodePolyline, getTempColor, stepToHourString } from '../utils';
-import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, East, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air } from '@mui/icons-material';
+import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, East, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air, Landscape, SwapCalls } from '@mui/icons-material';
 import { api } from '../api';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceArea } from 'recharts';
 
@@ -40,8 +40,8 @@ const RouteThumbnail = ({ polylineStr, width = 60, height = 40 }: { polylineStr?
   }).join(' ');
 
   return (
-    <svg width={width} height={height} style={{ flexShrink: 0, opacity: 0.6, marginLeft: 'auto' }}>
-      <path d={pathData} fill="none" stroke="#fc5200" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={width} height={height} style={{ flexShrink: 0, opacity: 0.7, marginLeft: 'auto' }}>
+      <path d={pathData} fill="none" stroke="#FC5200 " strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 };
@@ -688,7 +688,7 @@ export default function Controls({
               <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
                 <Button
                   component="label"
-                  variant="contained"
+                  variant="outlined"
                   disabled={isUploading || isDrawingMode}
                   startIcon={isUploading ? <CircularProgress size={20} sx={{}} /> : <FileUploadOutlined />}
                   sx={{
@@ -703,8 +703,8 @@ export default function Controls({
                   <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
                 </Button>
                 <Button
-                  variant="contained"
-                  color={isDrawingMode ? "secondary" : "primary"}
+                  variant="outlined"
+                  color={isDrawingMode ? "secondary" : undefined}
                   onClick={() => onToggleDrawingMode(!isDrawingMode)}
                   disabled={isUploading}
                   startIcon={<GestureOutlined />}
@@ -712,7 +712,7 @@ export default function Controls({
                     textTransform: 'none',
                     borderRadius: 1,
                     color: 'text.primary',
-                    backgroundColor: isDrawingMode ? undefined : 'primary.main',
+                    backgroundColor: isDrawingMode ? 'primary' : 'secondary',
                     '&:hover': { backgroundColor: isDrawingMode ? undefined : 'primary.dark' }
                   }}
                 >
@@ -764,7 +764,12 @@ export default function Controls({
                               }
                               secondary={
                                 <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                                  {`${startTimeStr ? dateStart + ' ' + startTimeStr + ' • ' : ''}${distKm} km${route.elevation ? ` • ${route.elevation}m 📈` : ''}`}
+                                  {<>
+                                    {`${startTimeStr ? dateStart + '   ' + startTimeStr : ''} `}
+                                    {<SwapCalls sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} />} {distKm}km
+                                    {route.elevation && (<> <Landscape sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} /> {`${route.elevation}m`}
+                                    </>)}
+                                  </>}
                                 </Typography>
                               }
                             />
@@ -816,105 +821,131 @@ export default function Controls({
                         </Box>
                       )}
                     </Box>
-                  )}
+                  )
+                  }
                 </Box>
               )}
               {weatherCards.length > 0 && (
-                <Box
-                  ref={scrollRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseLeave={handleMouseLeave}
-                  onMouseUp={handleMouseUp}
-                  onMouseMove={handleMouseMove}
-                  sx={{
-                    display: 'flex',
-                    gap: .25,
-                    overflowX: 'auto',
-                    scrollbarWidth: 'none',
-                    pb: 0.25,
-                    pt: 1,
-                    mt: 0,
-                    cursor: isDragging ? 'grabbing' : 'grab',
-                    '&::-webkit-scrollbar': { height: 6 },
-                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3 },
-                  }}
-                >
-                  {weatherCards.filter((card, index, self) => index === self.findIndex(c => c.time === card.time)).map((card, idx) => {
-                    const date = new Date(card.time);
-                    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+                <Box sx={{
+                  position: 'relative',
+                  overflow: 'hidden',
+                  mt: 1,
+                  '&::before': {
+                    content: "''",
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 20,
+                    background: "linear-gradient(to right, #1e1e1e54, rgba(0,0,0,0))",
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                  },
+                  '&::after': {
+                    content: "''",
+                    position: 'absolute',
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 20,
+                    background: "linear-gradient(to left, #1e1e1e54, rgba(0,0,0,0))",
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                  },
+                }}>
+                  <Box
+                    ref={scrollRef}
+                    onMouseDown={handleMouseDown}
+                    onMouseLeave={handleMouseLeave}
+                    onMouseUp={handleMouseUp}
+                    onMouseMove={handleMouseMove}
+                    sx={{
+                      display: 'flex',
+                      gap: .25,
+                      overflowX: 'auto',
+                      scrollbarWidth: 'none',
+                      cursor: isDragging ? 'grabbing' : 'grab',
+                      '&::-webkit-scrollbar': { height: 6 },
+                      '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 3 },
+                    }}
+                  >
+                    {weatherCards.filter((card, index, self) => index === self.findIndex(c => c.time === card.time)).map((card, idx) => {
+                      const date = new Date(card.time);
+                      const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-                    const cardsInInterval = weatherCards.filter(c => c.time === card.time);
-                    let sumSin = 0;
-                    let sumCos = 0;
-                    let validCount = 0;
-                    for (const c of cardsInInterval) {
-                      if (c.bearing !== null && c.forecast?.windDirection10m !== undefined) {
-                        const rel = c.forecast.windDirection10m - c.bearing;
-                        const rad = rel * Math.PI / 180;
-                        sumSin += Math.sin(rad);
-                        sumCos += Math.cos(rad);
-                        validCount++;
+                      const cardsInInterval = weatherCards.filter(c => c.time === card.time);
+                      let sumSin = 0;
+                      let sumCos = 0;
+                      let validCount = 0;
+                      for (const c of cardsInInterval) {
+                        if (c.bearing !== null && c.forecast?.windDirection10m !== undefined) {
+                          const rel = c.forecast.windDirection10m - c.bearing;
+                          const rad = rel * Math.PI / 180;
+                          sumSin += Math.sin(rad);
+                          sumCos += Math.cos(rad);
+                          validCount++;
+                        }
                       }
-                    }
 
-                    let avgRelativeAngle = null;
-                    let showArrow = false;
-                    if (validCount > 0) {
-                      avgRelativeAngle = (Math.atan2(sumSin / validCount, sumCos / validCount) * 180 / Math.PI + 360) % 360;
-                      if ((avgRelativeAngle >= 0 && avgRelativeAngle <= 45) ||
-                        (avgRelativeAngle >= 315 && avgRelativeAngle <= 360)) {
-                        showArrow = true;
-                      } else if (avgRelativeAngle >= 135 && avgRelativeAngle <= 225) {
-                        showArrow = true;
+                      let avgRelativeAngle = null;
+                      let showArrow = false;
+                      if (validCount > 0) {
+                        avgRelativeAngle = (Math.atan2(sumSin / validCount, sumCos / validCount) * 180 / Math.PI + 360) % 360;
+                        if ((avgRelativeAngle >= 0 && avgRelativeAngle <= 45) ||
+                          (avgRelativeAngle >= 315 && avgRelativeAngle <= 360)) {
+                          showArrow = true;
+                        } else if (avgRelativeAngle >= 135 && avgRelativeAngle <= 225) {
+                          showArrow = true;
+                        }
                       }
-                    }
 
-                    return (
-                      <Paper
-                        key={card.time}
-                        elevation={weatherCards[selectedCardIndex]?.time === card.time ? 6 : 2}
-                        onClick={() => {
-                          const originalIndex = weatherCards.findIndex(c => c.time === card.time);
-                          if (originalIndex !== -1) {
-                            onCardIndexChange(originalIndex);
-                          }
-                          if (scrollRef.current && scrollRef.current.children[idx]) {
-                            (scrollRef.current.children[idx] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-                          }
-                        }}
-                        sx={{
-                          minWidth: 50,
-                          p: 0.25,
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          color: '#1E293B',
-                          backgroundColor: getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing),
-                          borderRadius: 0.5,
-                          cursor: 'pointer',
-                          userSelect: 'none',
-                          boxShadow: 'none',
-                          '&:active': { boxShadow: 'none' },
-                          '&:focus': { boxShadow: 'none' },
-                          borderTop: `3px solid ${getTempColor(card.forecast?.temperature2m)}`,
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <Typography sx={{ fontWeight: 700, fontSize: '14px' }}>{card.forecast.temperature2m?.toFixed(0)}°C</Typography>
-                          <Box sx={{ height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', my: '1px' }}>
-                            {showArrow && avgRelativeAngle !== null ? (
-                              <East sx={{ fontSize: 16, transform: `rotate(${avgRelativeAngle}deg)` }} />
-                            ) : (
-                              <Typography sx={{ fontWeight: 500, fontSize: '14px', lineHeight: 1 }}>-</Typography>
-                            )}
+                      return (
+                        <Paper
+                          key={card.time}
+                          elevation={weatherCards[selectedCardIndex]?.time === card.time ? 6 : 2}
+                          onClick={() => {
+                            const originalIndex = weatherCards.findIndex(c => c.time === card.time);
+                            if (originalIndex !== -1) {
+                              onCardIndexChange(originalIndex);
+                            }
+                            if (scrollRef.current && scrollRef.current.children[idx]) {
+                              (scrollRef.current.children[idx] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                            }
+                          }}
+                          sx={{
+                            minWidth: 50,
+                            p: 0.25,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            color: '#1E293B',
+                            backgroundColor: getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing),
+                            borderRadius: 0.5,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            boxShadow: 'none',
+                            '&:active': { boxShadow: 'none' },
+                            '&:focus': { boxShadow: 'none' },
+                            borderTop: `3px solid ${getTempColor(card.forecast?.temperature2m)}`,
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <Typography sx={{ fontWeight: 700, fontSize: '14px' }}>{card.forecast.temperature2m?.toFixed(0)}°C</Typography>
+                            <Box sx={{ height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', my: '1px' }}>
+                              {showArrow && avgRelativeAngle !== null ? (
+                                <East sx={{ fontSize: 16, transform: `rotate(${avgRelativeAngle}deg)` }} />
+                              ) : (
+                                <Typography sx={{ fontWeight: 500, fontSize: '14px', lineHeight: 1 }}>-</Typography>
+                              )}
+                            </Box>
+                            <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitationProbability?.toFixed(0)}%</Typography>
+                            <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitation == 0 ? "0" : card.forecast.precipitation?.toFixed(1)} mm</Typography>
+                            <Typography sx={{ fontWeight: 700, fontSize: '11px', opacity: 0.6 }}>{timeString}</Typography>
                           </Box>
-                          <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitationProbability?.toFixed(0)}%</Typography>
-                          <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitation == 0 ? "0" : card.forecast.precipitation?.toFixed(1)} mm</Typography>
-                          <Typography sx={{ fontWeight: 700, fontSize: '11px', opacity: 0.6 }}>{timeString}</Typography>
-                        </Box>
-                      </Paper>
-                    );
-                  })}
+                        </Paper>
+                      );
+                    })}
+                  </Box>
                 </Box>
               )}
 
@@ -968,13 +999,13 @@ export default function Controls({
                     }
                     touchStartXRef.current = null;
                   }}
-                  sx={{ display: 'flex', alignItems: 'center', mt: 0.5, color: 'text.secondary', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 1, p: 0.5 }}
+                  sx={{ display: 'flex', alignItems: 'center', mt: 0.5, color: 'text.secondary', backgroundColor: 'background.paper', borderRadius: 1, p: 0.5 }}
                 >
                   <IconButton
                     size="small"
                     onClick={() => setActiveSectionIndex(prev => Math.max(0, prev - 1))}
                     disabled={activeSectionIndex === 0}
-                    sx={{ p: 0.5, color: '#000' }}
+                    sx={{ p: 0.5, color: 'text.secondary' }}
                   >
                     <NavigateBefore fontSize="small" />
                   </IconButton>
@@ -984,10 +1015,10 @@ export default function Controls({
                       const activeSec = sectionWeatherData[activeSectionIndex];
                       if (!activeSec) return null;
                       return (
-                        <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between', color: '#000' }}>
+                        <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between', color: 'text.primary' }}>
                           <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '11px', opacity: 0.8 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '11px' }}>
                                 At {activeSec.startKm}km (~{activeSec.startTimeStr})
                               </Typography>
                             </Box>
@@ -1014,7 +1045,7 @@ export default function Controls({
                                 ))}
                               </Box>
                             ) : (
-                              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '11px', color: 'rgba(56, 142, 60, 1)', userSelect: 'none' }}>
+                              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '11px', color: 'rgba(57, 212, 65, 1)', userSelect: 'none' }}>
                                 No severe weather
                               </Typography>
                             )}
@@ -1047,7 +1078,7 @@ export default function Controls({
                     size="small"
                     onClick={() => setActiveSectionIndex(prev => Math.min(sectionWeatherData.length - 1, prev + 1))}
                     disabled={activeSectionIndex >= sectionWeatherData.length - 1}
-                    sx={{ p: 0.5, color: '#000' }}
+                    sx={{ p: 0.5, color: 'text.secondary' }}
                   >
                     <NavigateNext fontSize="small" />
                   </IconButton>
