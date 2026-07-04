@@ -14,8 +14,8 @@ function App() {
   const getBaseDate = (dateStr?: string | null) => {
     const baseDate = dateStr ? new Date(dateStr) : new Date();
     const m = baseDate.getMinutes();
-    if (m < 15) {
-      baseDate.setMinutes(0, 0, 0);
+    if (m < 30) {
+      baseDate.setMinutes(30, 0, 0);
     } else {
       baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
     }

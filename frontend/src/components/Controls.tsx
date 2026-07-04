@@ -163,8 +163,8 @@ export default function Controls({
 
   if (hasData) {
     const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
-    if (baseDate.getMinutes() < 15) {
-      baseDate.setMinutes(0, 0, 0);
+    if (baseDate.getMinutes() < 30) {
+      baseDate.setMinutes(30, 0, 0);
     } else {
       baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
     }
@@ -596,8 +596,8 @@ export default function Controls({
 
     const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
     const m = baseDate.getMinutes();
-    if (m < 15) {
-      baseDate.setMinutes(0, 0, 0);
+    if (m < 30) {
+      baseDate.setMinutes(30, 0, 0);
     } else {
       baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
     }
