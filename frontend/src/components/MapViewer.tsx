@@ -38,7 +38,7 @@ const createWeatherIcon = (windDirection: number, windSpeed: number, maxWindSpee
       <div style="position: relative; width: 84px; height: 84px; display: flex; align-items: center; justify-content: center;">
           <div style="position: absolute; background-color: ${theme.palette.primary.main}; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid ${theme.palette.background.paper}; box-shadow: 0 0 4px rgba(0,0,0,0.5); z-index: 2;"></div>
         ${showArrow ? `
-        <div style="position: absolute; transform: rotate(${windDirection}deg); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1;">
+        <div style="position: absolute; transform: rotate(${windDirection + 180}deg); width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; z-index: 1;">
       <svg width="24" height="${height}" viewBox="0 0 24 ${height}" fill="none" stroke="${arrowColor}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 1px 2px rgba(255,255,255,0.8));">
         <line x1="12" y1="2" x2="12" y2="${Math.max(2, height - 2)}"></line>
         <polyline points="7.256 21.208 11.944 2.09 16.633 21.208" style="" stroke-width="3"></polyline>

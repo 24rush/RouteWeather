@@ -4,23 +4,12 @@ import MapViewer from './components/MapViewer';
 import Controls from './components/Controls';
 import type { RouteScoringDetails } from './types';
 import { api } from './api';
-import { getBearing, getDistance, decodePolyline } from './utils';
+import { getBearing, getDistance, decodePolyline, getBaseDate } from './utils';
 
 function App() {
   const [data, setData] = useState<RouteScoringDetails | null>(null);
   const [timeRange, setTimeRange] = useState<[number, number]>([0, 4]); // Default 2 hours (4 * 30m)
   const [routeDateStr, setRouteDateStr] = useState<string | null>(null);
-
-  const getBaseDate = (dateStr?: string | null) => {
-    const baseDate = dateStr ? new Date(dateStr) : new Date();
-    const m = baseDate.getMinutes();
-    if (m <= 30) {
-      baseDate.setMinutes(30, 0, 0);
-    } else {
-      baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
-    }
-    return baseDate;
-  };
 
   const getInitialMaxSteps = (routeData?: RouteScoringDetails | null) => {
     if (routeData?.forecastAtWeatherPoints) {
@@ -169,15 +158,9 @@ function App() {
     const durationMs = endTimeMs - startTimeMs;
 
     const routePositions = decodePolyline(data.routePolyline);
+    const maxWpId = Object.keys(data.forecastAtWeatherPoints || {}).length - 1;
 
-    const weatherPtCoords = pts.map(ptId => {
-      const ptStr = data.weatherPoints[ptId];
-      if (!ptStr) return { ptId, lat: 0, lng: 0 };
-      const [lat, lng] = ptStr.split(',').map(Number);
-      return { ptId, lat, lng };
-    }).filter(wp => wp.lat !== 0 || wp.lng !== 0);
-
-    const cards = [];
+    const cards: any[] = [];
     let lastBearing: number | null = null;
 
     let totalEffectiveDist = 0;
@@ -193,20 +176,12 @@ function App() {
     let currentEffectiveTimeMs = 0;
     let nextTargetTimeMs = 0;
 
-    const pushCard = (targetMs: number, posIdx: number, exactTimeMs: number) => {
-      let closestWp = weatherPtCoords[0];
-      let minDist = Infinity;
+    const pushCard = (targetMs: number, posIdx: number, exactTimeMs: number, currentDist: number) => {
+      const closestWpId = Math.min(maxWpId, Math.max(0, Math.round(currentDist / 4000)));
       const posLat = routePositions[posIdx][0];
       const posLng = routePositions[posIdx][1];
-      for (const wp of weatherPtCoords) {
-        const d = getDistance(wp.lat, wp.lng, posLat, posLng);
-        if (d < minDist) {
-          minDist = d;
-          closestWp = wp;
-        }
-      }
 
-      const pointForecasts = data.forecastAtWeatherPoints[closestWp.ptId]?.forecastAtIntervals;
+      const pointForecasts = data.forecastAtWeatherPoints[closestWpId]?.forecastAtIntervals;
       if (!pointForecasts) return;
 
       const arrivalTimeMs = startTimeMs + targetMs;
@@ -247,7 +222,7 @@ function App() {
       }
     };
 
-    pushCard(nextTargetTimeMs, 0, 0);
+    pushCard(nextTargetTimeMs, 0, 0, 0);
     nextTargetTimeMs += 30 * 60 * 1000;
 
     for (let i = 1; i < routePositions.length; i++) {
@@ -268,13 +243,13 @@ function App() {
       accumulatedDist += segmentDist;
 
       while (currentEffectiveTimeMs >= nextTargetTimeMs && nextTargetTimeMs <= durationMs) {
-        pushCard(nextTargetTimeMs, i, currentEffectiveTimeMs);
+        pushCard(nextTargetTimeMs, i, currentEffectiveTimeMs, accumulatedDist);
         nextTargetTimeMs += 30 * 60 * 1000;
       }
     }
 
     if (nextTargetTimeMs <= durationMs) {
-      pushCard(durationMs, routePositions.length - 1, currentEffectiveTimeMs);
+      pushCard(durationMs, routePositions.length - 1, currentEffectiveTimeMs, accumulatedDist);
     }
 
     return cards;

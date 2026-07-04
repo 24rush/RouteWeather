@@ -2,8 +2,8 @@ import React, { useState, useRef, useDeferredValue } from 'react';
 import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, IconButton, List, ListItem, ListItemButton, ListItemText } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails, HourlyForecastAtOMPoint } from '../types';
-import { getWeatherColor, decodePolyline, getTempColor, stepToHourString } from '../utils';
-import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, East, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air, Landscape, SwapCalls } from '@mui/icons-material';
+import { getWeatherColor, decodePolyline, getTempColor, getDistance, getBearing, stepToHourString, getBaseDate } from '../utils';
+import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, North, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air, Landscape, SwapCalls } from '@mui/icons-material';
 import { api } from '../api';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceArea } from 'recharts';
 
@@ -89,6 +89,7 @@ export default function Controls({
   const [activeTab, setActiveTab] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [ownerRoutes, setOwnerRoutes] = useState<any[]>([]);
+  const [selectedOwnerRoute, setSelectedOwnerRoute] = useState<any | null>(null);
 
   const handleAlertTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
@@ -105,6 +106,7 @@ export default function Controls({
       setActiveTab(1);
     } else {
       setActiveTab(0);
+      setSelectedOwnerRoute(null);
     }
   }, [data]);
 
@@ -136,6 +138,7 @@ export default function Controls({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      setSelectedOwnerRoute(null);
       onFileUpload(e.target.files[0]);
     }
   };
@@ -162,13 +165,7 @@ export default function Controls({
   let baseTimeMs = 0;
 
   if (hasData) {
-    const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
-    if (baseDate.getMinutes() <= 30) {
-      baseDate.setMinutes(30, 0, 0);
-    } else {
-      baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
-    }
-
+    const baseDate = getBaseDate(routeDateStr);
     baseTimeMs = baseDate.getTime();
 
     const stepMs = 30 * 60 * 1000;
@@ -244,12 +241,77 @@ export default function Controls({
   const deferredTimeRange = useDeferredValue(timeRange);
   const sectionWeatherDataCache = useRef<Record<string, any>>({});
 
+  const routeSimulationPoints = React.useMemo(() => {
+    if (!hasData || !data?.routePolyline || !data?.forecastAtWeatherPoints) return [];
+    const routePositions = decodePolyline(data.routePolyline);
+    const maxWpId = Object.keys(data.forecastAtWeatherPoints).length - 1;
+
+    let totalEffectiveDist = 0;
+    for (let i = 1; i < data.physics.distances.length; i++) {
+      const segDist = data.physics.distances[i] - data.physics.distances[i - 1];
+      const multiplier = data.physics.speedMultipliers[i] || 1.0;
+      totalEffectiveDist += segDist / multiplier;
+    }
+    if (totalEffectiveDist === 0) totalEffectiveDist = 1;
+
+    let physicsIdx = 1;
+    let accumulatedDist = 0;
+    let currentFraction = 0;
+
+    const simPoints = [];
+
+    for (let i = 1; i < routePositions.length; i++) {
+      const p1 = routePositions[i - 1];
+      const p2 = routePositions[i];
+      const segmentDist = getDistance(p1[0], p1[1], p2[0], p2[1]) * 1000;
+
+      const midpointDist = accumulatedDist + segmentDist / 2;
+      while (physicsIdx < data.physics.distances.length - 1 && data.physics.distances[physicsIdx] < midpointDist) {
+        physicsIdx++;
+      }
+
+      const multiplier = data.physics.speedMultipliers[physicsIdx] || 1.0;
+      const timeFraction = (segmentDist / multiplier) / totalEffectiveDist;
+
+      const closestWpId = Math.min(maxWpId, Math.max(0, Math.round(accumulatedDist / 4000)));
+      const bearing = getBearing(p1[0], p1[1], p2[0], p2[1]);
+
+      simPoints.push({
+        wpId: closestWpId,
+        fraction: currentFraction + timeFraction,
+        segmentDist,
+        bearing
+      });
+
+      currentFraction += timeFraction;
+      accumulatedDist += segmentDist;
+    }
+    return simPoints;
+  }, [data, hasData]);
+
   React.useEffect(() => {
     sectionWeatherDataCache.current = {};
   }, [data]);
 
+  const timeFractions = React.useMemo(() => {
+    if (!hasData || !data?.physics?.distances || !data?.physics?.speedMultipliers) return new Float64Array(0);
+    const fractions = new Float64Array(data.physics.distances.length);
+    let totalEff = 0;
+    for (let i = 1; i < data.physics.distances.length; i++) {
+      const segDist = data.physics.distances[i] - data.physics.distances[i - 1];
+      const multiplier = data.physics.speedMultipliers[i] || 1.0;
+      totalEff += segDist / multiplier;
+      fractions[i] = totalEff;
+    }
+    if (totalEff === 0) totalEff = 1;
+    for (let i = 0; i < fractions.length; i++) {
+      fractions[i] = fractions[i] / totalEff;
+    }
+    return fractions;
+  }, [data, hasData]);
+
   const sectionWeatherData = React.useMemo(() => {
-    if (!hasData || !data?.physics?.sections || !data?.physics?.distances || !data.forecastAtWeatherPoints) return [];
+    if (!hasData || !data?.physics?.sections || !data?.physics?.distances || timeFractions.length === 0 || !data.forecastAtWeatherPoints) return [];
 
     const cacheKey = `${deferredTimeRange[0]}_${deferredTimeRange[1]}`;
     if (sectionWeatherDataCache.current[cacheKey]) {
@@ -261,9 +323,6 @@ export default function Controls({
     const baseTimeMs = baseDate.getTime();
     const startTimeMs = baseTimeMs + deferredTimeRange[0] * 30 * 60 * 1000;
     const durationMs = (deferredTimeRange[1] - deferredTimeRange[0]) * 30 * 60 * 1000;
-    const totalDist = data.physics.distances[data.physics.distances.length - 1] || 1;
-
-    const weatherPtIndices = Object.keys(data.weatherPoints).map(Number).sort((a, b) => a - b);
 
     // Use only significant sections
     const significantSections = data.physics.sections.filter(sec => {
@@ -285,13 +344,14 @@ export default function Controls({
       let ptCount = 0;
 
       // Find arrival time at start of section
-      const startDist = data.physics.distances[sec.startIndex];
-      const startFraction = startDist / totalDist;
-      const sectionStartMs = startTimeMs + startFraction * durationMs;
+      const fraction = timeFractions[sec.startIndex];
+      const sectionStartMs = startTimeMs + fraction * durationMs;
 
       // Subsample evaluating points (e.g. every 10th point)
       const step = Math.max(1, Math.floor((sec.endIndex - sec.startIndex) / 50));
       for (let i = sec.startIndex; i <= sec.endIndex; i += step) {
+        const pointFraction = timeFractions[i];
+        const arrivalTimeMs = startTimeMs + pointFraction * durationMs;
         const dist = data.physics.distances[i];
         let segmentDist = 0;
         if (i === sec.startIndex) {
@@ -300,18 +360,9 @@ export default function Controls({
           const prevIdx = Math.max(sec.startIndex, i - step);
           segmentDist = dist - data.physics.distances[prevIdx];
         }
-        const fraction = dist / totalDist;
-        const arrivalTimeMs = startTimeMs + fraction * durationMs;
 
-        let nearestPt = weatherPtIndices[0];
-        let minDist = Math.abs(i - nearestPt);
-        for (let j = 1; j < weatherPtIndices.length; j++) {
-          const d = Math.abs(i - weatherPtIndices[j]);
-          if (d < minDist) {
-            minDist = d;
-            nearestPt = weatherPtIndices[j];
-          }
-        }
+        const maxWpId = Object.keys(data.forecastAtWeatherPoints).length - 1;
+        const nearestPt = Math.min(maxWpId, Math.max(0, Math.round(dist / 4000)));
 
         const pointForecasts = data.forecastAtWeatherPoints[nearestPt]?.forecastAtIntervals;
         if (!pointForecasts) continue;
@@ -367,7 +418,7 @@ export default function Controls({
       return {
         key: idx,
         type: sec.type === 2 ? 'Ascent' : sec.type === 3 ? 'Descent' : 'Flat',
-        startKm: (startDist / 1000).toFixed(1),
+        startKm: (data.physics.distances[sec.startIndex] / 1000).toFixed(1),
         startTimeStr: new Date(sectionStartMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
         avgTemp,
         avgRain,
@@ -501,8 +552,7 @@ export default function Controls({
     const startTimeMs = baseTimeMs + startIndexSteps * stepMs;
     const durationMs = durationSteps * stepMs;
 
-    const weatherPtIndices = Object.keys(routeData.weatherPoints).map(Number).sort((a, b) => a - b);
-    const totalDist = routeData.physics.distances[routeData.physics.distances.length - 1] || 1;
+
 
     let totalScore = 0;
     let ptCount = 0;
@@ -511,31 +561,15 @@ export default function Controls({
     let totalEffectiveWind = 0;
     let evaluatedDistance = 0;
 
-    // Subsample evaluating points (e.g. every 10th point) for performance
-    const step = Math.max(1, Math.floor(routeData.physics.distances.length / 100));
-    for (let i = 0; i < routeData.physics.distances.length; i += step) {
-      const dist = routeData.physics.distances[i];
-      let segmentDist = 0;
-      if (i === 0) {
-        segmentDist = dist;
-      } else {
-        const prevIdx = i - step >= 0 ? i - step : 0;
-        segmentDist = dist - routeData.physics.distances[prevIdx];
-      }
-      const fraction = dist / totalDist;
-      const arrivalTimeMs = startTimeMs + fraction * durationMs;
+    // We can evaluate e.g. every 10th simulation point to save performance while retaining very high fidelity
+    const step = Math.max(1, Math.floor(routeSimulationPoints.length / 200));
 
-      let nearestPt = weatherPtIndices[0];
-      let minDist = Math.abs(i - nearestPt);
-      for (let j = 1; j < weatherPtIndices.length; j++) {
-        const d = Math.abs(i - weatherPtIndices[j]);
-        if (d < minDist) {
-          minDist = d;
-          nearestPt = weatherPtIndices[j];
-        }
-      }
+    for (let i = 0; i < routeSimulationPoints.length; i += step) {
+      const pt = routeSimulationPoints[i];
 
-      const pointForecasts = routeData.forecastAtWeatherPoints[nearestPt]?.forecastAtIntervals;
+      const arrivalTimeMs = startTimeMs + pt.fraction * durationMs;
+
+      const pointForecasts = routeData.forecastAtWeatherPoints[pt.wpId]?.forecastAtIntervals;
       if (!pointForecasts) continue;
 
       let closestForecast: HourlyForecastAtOMPoint | null = null;
@@ -552,10 +586,14 @@ export default function Controls({
       if (closestForecast) {
         const windSpeed = closestForecast.windSpeed10m || 0;
         const windDir = closestForecast.windDirection10m || 0;
-        const bearing = routeData.physics.bearings[i] || 0;
+
+        let segmentDist = 0;
+        for (let k = i; k < Math.min(i + step, routeSimulationPoints.length); k++) {
+          segmentDist += routeSimulationPoints[k].segmentDist;
+        }
 
         evaluatedDistance += segmentDist;
-        const angleDiffRad = (windDir - bearing) * Math.PI / 180;
+        const angleDiffRad = (windDir - pt.bearing) * Math.PI / 180;
         const headwind = windSpeed * Math.cos(angleDiffRad);
 
         totalEffectiveWind += (headwind * segmentDist);
@@ -564,23 +602,23 @@ export default function Controls({
 
         const temp = closestForecast.temperature2m !== undefined ? closestForecast.temperature2m : IDEAL_TEMP;
         const tempScore = -Math.abs(temp - IDEAL_TEMP) * TEMP_WEIGHT;
-        totalTemp += temp;
+        totalTemp += temp * segmentDist;
 
         const rain = closestForecast.precipitation || 0;
         const rainScore = -rain * RAIN_WEIGHT;
-        totalRain += rain;
+        totalRain += rain * segmentDist;
 
         totalScore += (windScore + tempScore + rainScore);
         ptCount++;
       }
     }
 
-    if (ptCount === 0) return { score: -Infinity, avgTemp: 0, avgRain: 0, avgWind: 0 };
+    if (evaluatedDistance === 0) return { score: -Infinity, avgTemp: 0, avgRain: 0, avgWind: 0 };
     return {
       score: totalScore / ptCount,
-      avgTemp: totalTemp / ptCount,
-      avgRain: totalRain / ptCount,
-      avgWind: evaluatedDistance > 0 ? (totalEffectiveWind / evaluatedDistance) : 0
+      avgTemp: totalTemp / evaluatedDistance,
+      avgRain: totalRain / evaluatedDistance,
+      avgWind: totalEffectiveWind / evaluatedDistance
     };
   };
 
@@ -593,14 +631,7 @@ export default function Controls({
     let bestWind = 0;
 
     const durationSteps = timeRange[1] - timeRange[0];
-
-    const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
-    const m = baseDate.getMinutes();
-    if (m <= 30) {
-      baseDate.setMinutes(30, 0, 0);
-    } else {
-      baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
-    }
+    const baseDate = getBaseDate(routeDateStr);
     const baseTimeMs = baseDate.getTime();
 
     // Evaluate up to MAX_START_STEPS
@@ -722,7 +753,10 @@ export default function Controls({
                   <Button
                     variant="contained"
                     color="error"
-                    onClick={onClearRoute}
+                    onClick={() => {
+                      setSelectedOwnerRoute(null);
+                      onClearRoute();
+                    }}
                     disabled={isUploading}
                     sx={{
                       textTransform: 'none',
@@ -753,7 +787,10 @@ export default function Controls({
                       return (
                         <ListItem key={route.id} disablePadding sx={{ mb: 0.5 }}>
                           <ListItemButton
-                            onClick={() => onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined)}
+                            onClick={() => {
+                              setSelectedOwnerRoute(route);
+                              onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined);
+                            }}
                             sx={{ bgcolor: 'background.paper', borderRadius: 1, px: 1, '&:hover': { bgcolor: 'action.hover' } }}
                           >
                             <ListItemText
@@ -788,7 +825,20 @@ export default function Controls({
 
           {activeTab === 1 && hasData && (
             <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              {bestStartData && (
+              {selectedOwnerRoute ? (
+                <Box sx={{
+                  borderRadius: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  py: 1
+                }}>
+                  <Typography variant="body2" sx={{ fontWeight: 800, fontSize: '0.95rem', color: 'text.primary', textAlign: 'center' }}>
+                    {selectedOwnerRoute.name}
+                  </Typography>
+                </Box>
+              ) : bestStartData && (
                 <Box sx={{
                   borderRadius: 1,
                   display: 'flex',
@@ -797,7 +847,7 @@ export default function Controls({
                   justifyContent: 'center',
                 }}>
                   <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65em', color: 'text.secondary' }}>
-                    OPTIMAL START TIME
+                    BEST START TIME
                   </Typography>
                   {bestStartData.noOptimalTime ? (
                     <Typography variant="caption" sx={{ fontWeight: 600 }}>No daylight times left today</Typography>
@@ -883,7 +933,7 @@ export default function Controls({
                       let validCount = 0;
                       for (const c of cardsInInterval) {
                         if (c.bearing !== null && c.forecast?.windDirection10m !== undefined) {
-                          const rel = c.forecast.windDirection10m - c.bearing;
+                          const rel = (c.forecast.windDirection10m + 180) - c.bearing;
                           const rad = rel * Math.PI / 180;
                           sumSin += Math.sin(rad);
                           sumCos += Math.cos(rad);
@@ -938,7 +988,7 @@ export default function Controls({
                             <Typography sx={{ fontWeight: 700, fontSize: '14px' }}>{card.forecast.temperature2m?.toFixed(0)}°C</Typography>
                             <Box sx={{ height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', my: '1px' }}>
                               {showArrow && avgRelativeAngle !== null ? (
-                                <East sx={{ fontSize: 16, transform: `rotate(${avgRelativeAngle}deg)` }} />
+                                <North sx={{ fontSize: 16, transform: `rotate(${avgRelativeAngle + 180}deg)` }} />
                               ) : (
                                 <Typography sx={{ fontWeight: 500, fontSize: '14px', lineHeight: 1 }}>-</Typography>
                               )}

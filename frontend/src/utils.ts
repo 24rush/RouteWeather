@@ -1,3 +1,14 @@
+export const getBaseDate = (routeDateStr?: string | null) => {
+  const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
+  if (baseDate.getMinutes() <= 30 && baseDate.getMinutes() > 0) {
+    baseDate.setMinutes(30, 0, 0);
+  } else {
+    baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), 0, 0, 0);
+  }
+
+  return baseDate;
+}
+
 export const getBearing = (lat1: number, lon1: number, lat2: number, lon2: number) => {
   const toRad = (d: number) => d * Math.PI / 180;
   const dLon = toRad(lon2 - lon1);
@@ -21,7 +32,7 @@ export const getDistance = (lat1: number, lon1: number, lat2: number, lon2: numb
   return R * c;
 };
 
-function blendHues(h1, h2, factor) {
+function blendHues(h1: number, h2: number, factor: number) {
   let diff = h2 - h1;
 
   // If the transition goes through purple (counter-clockwise from red to blue),
@@ -45,7 +56,7 @@ function blendHues(h1, h2, factor) {
 
 const STORM_BLUE = { h: 200, s: 75, l: 60 };
 
-export const getRainyWeatherColor = (tempColorStr, rainProb, rainVol) => {
+export const getRainyWeatherColor = (tempColorStr: string, rainProb: number, rainVol: number) => {
   const match = tempColorStr.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/i);
   let tempColor = { h: 0, s: 0, l: 100 };
   if (match) {
