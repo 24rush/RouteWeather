@@ -163,7 +163,7 @@ export default function Controls({
 
   if (hasData) {
     const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
-    if (baseDate.getMinutes() < 30) {
+    if (baseDate.getMinutes() <= 30) {
       baseDate.setMinutes(30, 0, 0);
     } else {
       baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
@@ -596,7 +596,7 @@ export default function Controls({
 
     const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
     const m = baseDate.getMinutes();
-    if (m < 30) {
+    if (m <= 30) {
       baseDate.setMinutes(30, 0, 0);
     } else {
       baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
@@ -903,18 +903,16 @@ export default function Controls({
                         }
                       }
 
+                      var isSelected = selectedCardIndex >= 0 ? weatherCards[selectedCardIndex]?.uiTime === card.uiTime : false;
+
                       return (
                         <Paper
-                          key={card.time}
-                          elevation={weatherCards[selectedCardIndex]?.time === card.time ? 6 : 2}
+                          key={card.uiTime}
+                          elevation={isSelected ? 6 : 2}
                           onClick={() => {
-                            const originalIndex = weatherCards.findIndex(c => c.time === card.time);
-                            if (originalIndex !== -1) {
-                              onCardIndexChange(originalIndex);
-                            }
-                            if (scrollRef.current && scrollRef.current.children[idx]) {
-                              (scrollRef.current.children[idx] as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-                            }
+                            var originalIndex = weatherCards.findIndex(c => c.uiTime === card.uiTime);
+                            if (originalIndex == selectedCardIndex) { originalIndex = -1; }
+                            onCardIndexChange(originalIndex);
                           }}
                           sx={{
                             minWidth: 50,
@@ -927,9 +925,11 @@ export default function Controls({
                             borderRadius: 0,
                             cursor: 'pointer',
                             userSelect: 'none',
-                            boxShadow: 'none',
+                            boxShadow: isSelected ? 'inset 0 -3px 0 #fff, 0px 6px 12px -2px rgba(255, 255, 255, 0.8)' : 'none',
                             borderTop: `3px solid ${getTempColor(card.forecast?.temperature2m)}`,
                             borderRight: idx === uniqueCards.length - 1 ? 'none' : '1px solid rgba(0, 0, 0, .4)',
+                            borderBottom: 'none',
+                            transition: 'border-color 0.2s, box-shadow 0.2s',
                             '&:active': { boxShadow: 'none' },
                             '&:focus': { boxShadow: 'none' },
                           }}

@@ -14,7 +14,7 @@ function App() {
   const getBaseDate = (dateStr?: string | null) => {
     const baseDate = dateStr ? new Date(dateStr) : new Date();
     const m = baseDate.getMinutes();
-    if (m < 30) {
+    if (m <= 30) {
       baseDate.setMinutes(30, 0, 0);
     } else {
       baseDate.setHours(baseDate.getHours() + 1, 0, 0, 0);
@@ -43,7 +43,7 @@ function App() {
   };
 
   const [maxSliderSteps, setMaxSliderSteps] = useState(getInitialMaxSteps());
-  const [selectedCardIndex, setSelectedCardIndex] = useState(0);
+  const [selectedCardIndex, setSelectedCardIndex] = useState(-1);
   const [isUploading, setIsUploading] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [drawnPoints, setDrawnPoints] = useState<[number, number][]>([]);
@@ -193,7 +193,7 @@ function App() {
     let currentEffectiveTimeMs = 0;
     let nextTargetTimeMs = 0;
 
-    const pushCard = (targetMs: number, posIdx: number) => {
+    const pushCard = (targetMs: number, posIdx: number, exactTimeMs: number) => {
       let closestWp = weatherPtCoords[0];
       let minDist = Infinity;
       const posLat = routePositions[posIdx][0];
@@ -238,6 +238,7 @@ function App() {
         cards.push({
           time: closestTimeIso,
           uiTime: arrivalTimeMs,
+          exactTime: startTimeMs + exactTimeMs,
           forecast: closestForecast,
           lat: posLat,
           lng: posLng,
@@ -246,7 +247,7 @@ function App() {
       }
     };
 
-    pushCard(nextTargetTimeMs, 0);
+    pushCard(nextTargetTimeMs, 0, 0);
     nextTargetTimeMs += 30 * 60 * 1000;
 
     for (let i = 1; i < routePositions.length; i++) {
@@ -267,13 +268,13 @@ function App() {
       accumulatedDist += segmentDist;
 
       while (currentEffectiveTimeMs >= nextTargetTimeMs && nextTargetTimeMs <= durationMs) {
-        pushCard(nextTargetTimeMs, i);
+        pushCard(nextTargetTimeMs, i, currentEffectiveTimeMs);
         nextTargetTimeMs += 30 * 60 * 1000;
       }
     }
 
     if (nextTargetTimeMs <= durationMs) {
-      pushCard(durationMs, routePositions.length - 1);
+      pushCard(durationMs, routePositions.length - 1, currentEffectiveTimeMs);
     }
 
     return cards;

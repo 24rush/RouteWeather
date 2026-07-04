@@ -293,28 +293,28 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
       {weatherCards.map((m, index) => (
         m.forecast && (
           <Marker key={index} position={[m.lat, m.lng]} icon={createWeatherIcon(m.forecast.windDirection10m, m.forecast.windSpeed10m, maxWindSpeed, theme)} zIndexOffset={index === selectedCardIndex ? 1000 : 0}>
-            {index === selectedCardIndex && (
-              <Tooltip direction="top" offset={[0, -10]} className="weather-tooltip" permanent={true}>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  lineHeight: 1.1,
-                  padding: '4px 6px',
-                  alignItems: 'center',
-                  backgroundColor: getWeatherColor(m.forecast, true, m.bearing),
-                  borderRadius: '4px',
-                  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
-                  border: '1px solid',
-                  borderColor: theme.palette.divider,
-                  color: theme.palette.background.paper,
-                }}>
-                  <span style={{ fontWeight: 700, fontSize: '13px' }}>{m.forecast.temperature2m.toFixed(0)}°C</span>
-                  <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.windSpeed10m.toFixed(0)} km/h</span>
-                  <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.precipitationProbability.toFixed(0)}%</span>
-                  <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.precipitation.toFixed(0)} mm</span>
-                </div>
-              </Tooltip>
-            )}
+            <Tooltip direction="top" offset={[0, -10]} className="weather-tooltip" permanent={true}>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                lineHeight: 1.1,
+                padding: '4px 6px',
+                alignItems: 'center',
+                backgroundColor: getWeatherColor(m.forecast, index === selectedCardIndex, m.bearing),
+                borderRadius: '4px',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
+                border: index === selectedCardIndex ? '2px solid white' : '1px solid',
+                borderColor: index === selectedCardIndex ? 'white' : theme.palette.divider,
+                color: theme.palette.background.paper,
+                transform: index === selectedCardIndex ? 'scale(1.1)' : 'scale(1)',
+                transition: 'all 0.2s ease-in-out'
+              }}>
+                <span style={{ fontWeight: 700, fontSize: '13px' }}>{m.forecast.temperature2m.toFixed(0)}°C</span>
+                <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.windSpeed10m.toFixed(0)} km/h</span>
+                <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.precipitation.toFixed(1)} mm</span>
+                <span style={{ fontWeight: 700, fontSize: '11px' }}>{new Date((m as any).exactTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
+              </div>
+            </Tooltip>
           </Marker>
         )
       ))}
