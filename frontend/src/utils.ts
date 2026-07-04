@@ -21,6 +21,53 @@ export const getDistance = (lat1: number, lon1: number, lat2: number, lon2: numb
   return R * c;
 };
 
+function blendHues(h1, h2, factor) {
+  let diff = h2 - h1;
+
+  // If the transition goes through purple (counter-clockwise from red to blue),
+  // force it to go clockwise through green/teal instead
+  if (diff < -180) {
+    diff += 360;
+  } else if (diff > 180) {
+    diff -= 360;
+  }
+
+  // Double-check: If we are starting near red (e.g., h1 > 300) and going to blue (h2 = 200),
+  // we force it to go clockwise (via 360 -> 0 -> 100 -> 200) to bypass purple entirely:
+  if (h1 > 300 && h2 === 200) {
+    const adjustedH1 = h1 - 360; // treats 350° as -10°
+    const interpolated = adjustedH1 + (h2 - adjustedH1) * factor;
+    return (interpolated + 360) % 360;
+  }
+
+  return (h1 + diff * factor + 360) % 360;
+}
+
+const STORM_BLUE = { h: 200, s: 75, l: 60 };
+
+export const getRainyWeatherColor = (tempColorStr, rainProb, rainVol) => {
+  const match = tempColorStr.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/i);
+  let tempColor = { h: 0, s: 0, l: 100 };
+  if (match) {
+    tempColor = { h: parseFloat(match[1]), s: parseFloat(match[2]), l: parseFloat(match[3]) };
+  }
+
+  // Calculate base rain factor
+  const probFactor = Math.min(1.0, rainProb / 50);
+  const volFactor = Math.min(1.0, rainVol / 0.4);
+  const rawRainFactor = Math.max(probFactor, volFactor);
+
+  // Apply a curve so it reaches maximum blue much faster
+  const rainFactor = Math.pow(rawRainFactor, 0.5);
+
+  // Blend using the clockwise hue blender
+  const h = blendHues(tempColor.h, STORM_BLUE.h, rainFactor);
+  const s = tempColor.s + (STORM_BLUE.s - tempColor.s) * rainFactor;
+  const l = tempColor.l + (STORM_BLUE.l - tempColor.l) * rainFactor;
+
+  return `hsl(${h.toFixed(1)}, ${s.toFixed(1)}%, ${l.toFixed(1)}%)`;
+}
+
 export const getWindColor = (windSpeed: number) => {
   // Map wind speed (0 - 40km/h) to hue (120 - 0)
   const hue = Math.max(0, 120 - (windSpeed * 3));
@@ -33,6 +80,7 @@ export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: num
   const temp = forecast.temperature2m || 20;
   const wind = forecast.windSpeed10m || 0;
   const precipProb = forecast.precipitationProbability || 0;
+  const precipVol = forecast.precipitation || 0;
   const windDir = forecast.windDirection10m || 0;
 
   let windMultiplier = 1.0;
@@ -51,7 +99,13 @@ export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: num
   const hue = Math.max(0, 120 - (totalScore * 1.2));
 
   const alpha = overrideAlpha !== undefined ? overrideAlpha : (isSelected ? 0.9 : 0.8);
-  return `hsla(${hue}, 95%, 50%, ${alpha})`;
+
+  const colorByTemp = `hsla(${hue}, 95%, 50%, ${alpha})`;
+  if (precipVol > 0) {
+    return getRainyWeatherColor(colorByTemp, precipProb, precipVol);
+  }
+
+  return colorByTemp;
 };
 
 export const getTempColor = (temp?: number) => {

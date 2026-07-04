@@ -56,7 +56,7 @@ interface ControlsProps {
   setMaxSliderSteps: (val: number) => void;
   selectedCardIndex: number;
   onCardIndexChange: (index: number) => void;
-  weatherCards: { time: string; forecast: HourlyForecastAtOMPoint; bearing: number | null; lat: number; lng: number }[];
+  weatherCards: { time: string; forecast: HourlyForecastAtOMPoint; bearing: number | null; lat: number; lng: number, uiTime: string }[];
   isDrawingMode: boolean;
   onToggleDrawingMode: (enabled: boolean) => void;
   onClearRoute: () => void;
@@ -869,15 +869,15 @@ export default function Controls({
                       '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 0 },
                     }}
                   >
-                    {weatherCards.filter((card, index, self) => index === self.findIndex(c => c.time === card.time)).map((card, idx, uniqueCards) => {
-                      const date = new Date(card.time);
+                    {weatherCards.filter((card, index, self) => index === self.findIndex(c => c.uiTime === card.uiTime)).map((card, idx, uniqueCards) => {
+                      const date = new Date(card.uiTime);
                       const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
                       const nextCard = uniqueCards[idx + 1] || card;
                       const currentBg = getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing);
                       const nextBg = getWeatherColor(nextCard.forecast, (idx + 1) === selectedCardIndex, nextCard.bearing);
 
-                      const cardsInInterval = weatherCards.filter(c => c.time === card.time);
+                      const cardsInInterval = weatherCards.filter(c => c.uiTime === card.uiTime);
                       let sumSin = 0;
                       let sumCos = 0;
                       let validCount = 0;
