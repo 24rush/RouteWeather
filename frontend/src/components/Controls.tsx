@@ -2,7 +2,7 @@ import React, { useState, useRef, useDeferredValue } from 'react';
 import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, IconButton, List, ListItem, ListItemButton, ListItemText } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails, HourlyForecastAtOMPoint } from '../types';
-import { getWeatherColor, decodePolyline, getTempColor, getDistance, getBearing, stepToHourString, getBaseDate } from '../utils';
+import { getWeatherColor, decodePolyline, getTempColor, getDistance, getBearing, stepToHourString, getBaseDate, interpolateForecast } from '../utils';
 import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, North, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air, Landscape, SwapCalls } from '@mui/icons-material';
 import { api } from '../api';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceArea } from 'recharts';
@@ -241,53 +241,103 @@ export default function Controls({
   const deferredTimeRange = useDeferredValue(timeRange);
   const sectionWeatherDataCache = useRef<Record<string, any>>({});
 
-  const routeSimulationPoints = React.useMemo(() => {
-    if (!hasData || !data?.routePolyline || !data?.forecastAtWeatherPoints) return [];
+  const thirtyMinuteIntervalPoints = React.useMemo(() => {
+    if (!hasData || !data?.routePolyline || !data?.forecastAtWeatherPoints || !data?.weatherPoints) return [];
     const routePositions = decodePolyline(data.routePolyline);
-    const maxWpId = Object.keys(data.forecastAtWeatherPoints).length - 1;
+
+    const pts = Object.keys(data.weatherPoints).map(Number).sort((a, b) => a - b);
+    const weatherPtCoords = pts.map(ptId => {
+      const ptStr = data.weatherPoints[ptId];
+      if (!ptStr) return { ptId, lat: 0, lng: 0 };
+      const [lat, lng] = ptStr.split(',').map(Number);
+      return { ptId, lat, lng };
+    }).filter(wp => wp.lat !== 0 || wp.lng !== 0);
+
+    const durationSteps = timeRange[1] - timeRange[0];
+    const stepMs = 30 * 60 * 1000;
+    const durationMs = durationSteps * stepMs;
+
+    const segmentDist = 25;
 
     let totalEffectiveDist = 0;
-    for (let i = 1; i < data.physics.distances.length; i++) {
-      const segDist = data.physics.distances[i] - data.physics.distances[i - 1];
-      const multiplier = data.physics.speedMultipliers[i] || 1.0;
-      totalEffectiveDist += segDist / multiplier;
+    let tempAccDist = 0;
+    let tempPhysicsIdx = 1;
+    for (let i = 1; i < routePositions.length; i++) {
+      const midpointDist = tempAccDist + segmentDist / 2;
+      while (tempPhysicsIdx < data.physics.distances.length - 1 && data.physics.distances[tempPhysicsIdx] < midpointDist) {
+        tempPhysicsIdx++;
+      }
+      const multiplier = data.physics.speedMultipliers[tempPhysicsIdx] || 1.0;
+      totalEffectiveDist += segmentDist / multiplier;
+      tempAccDist += segmentDist;
     }
     if (totalEffectiveDist === 0) totalEffectiveDist = 1;
 
     let physicsIdx = 1;
     let accumulatedDist = 0;
-    let currentFraction = 0;
+    let currentEffectiveTimeMs = 0;
+    let nextTargetTimeMs = 0;
 
-    const simPoints = [];
+    const intervalPoints: any[] = [];
+
+    const addIntervalPoint = (targetMs: number, posIdx: number) => {
+      const posLat = routePositions[posIdx][0];
+      const posLng = routePositions[posIdx][1];
+
+      let closestWp = weatherPtCoords[0];
+      let minDist = Infinity;
+      for (const wp of weatherPtCoords) {
+        const d = getDistance(wp.lat, wp.lng, posLat, posLng);
+        if (d < minDist) {
+          minDist = d;
+          closestWp = wp;
+        }
+      }
+
+      let bearing = null;
+      for (let j = posIdx + 1; j < Math.min(posIdx + 15, routePositions.length); j++) {
+        if (routePositions[j][0] !== posLat || routePositions[j][1] !== posLng) {
+          bearing = getBearing(posLat, posLng, routePositions[j][0], routePositions[j][1]);
+          break;
+        }
+      }
+
+      intervalPoints.push({
+        targetMs,
+        posIdx,
+        bearing,
+        wpId: closestWp.ptId
+      });
+    };
+
+    addIntervalPoint(nextTargetTimeMs, 0);
+    nextTargetTimeMs += stepMs;
 
     for (let i = 1; i < routePositions.length; i++) {
-      const p1 = routePositions[i - 1];
-      const p2 = routePositions[i];
-      const segmentDist = getDistance(p1[0], p1[1], p2[0], p2[1]) * 1000;
-
       const midpointDist = accumulatedDist + segmentDist / 2;
       while (physicsIdx < data.physics.distances.length - 1 && data.physics.distances[physicsIdx] < midpointDist) {
         physicsIdx++;
       }
 
       const multiplier = data.physics.speedMultipliers[physicsIdx] || 1.0;
-      const timeFraction = (segmentDist / multiplier) / totalEffectiveDist;
+      const effectiveSegment = segmentDist / multiplier;
+      const timeForSegmentMs = effectiveSegment * (durationMs / totalEffectiveDist);
 
-      const closestWpId = Math.min(maxWpId, Math.max(0, Math.round(accumulatedDist / 4000)));
-      const bearing = getBearing(p1[0], p1[1], p2[0], p2[1]);
-
-      simPoints.push({
-        wpId: closestWpId,
-        fraction: currentFraction + timeFraction,
-        segmentDist,
-        bearing
-      });
-
-      currentFraction += timeFraction;
+      currentEffectiveTimeMs += timeForSegmentMs;
       accumulatedDist += segmentDist;
+
+      while (currentEffectiveTimeMs >= nextTargetTimeMs && nextTargetTimeMs <= durationMs) {
+        addIntervalPoint(nextTargetTimeMs, i);
+        nextTargetTimeMs += stepMs;
+      }
     }
-    return simPoints;
-  }, [data, hasData]);
+
+    if (nextTargetTimeMs <= durationMs) {
+      addIntervalPoint(durationMs, routePositions.length - 1);
+    }
+
+    return intervalPoints;
+  }, [data, hasData, timeRange]);
 
   React.useEffect(() => {
     sectionWeatherDataCache.current = {};
@@ -362,21 +412,12 @@ export default function Controls({
         }
 
         const maxWpId = Object.keys(data.forecastAtWeatherPoints).length - 1;
-        const nearestPt = Math.min(maxWpId, Math.max(0, Math.round(dist / 4000)));
+        const nearestPt = Math.min(maxWpId, Math.max(0, Math.round(dist / 3500)));
 
         const pointForecasts = data.forecastAtWeatherPoints[nearestPt]?.forecastAtIntervals;
         if (!pointForecasts) continue;
 
-        let closestForecast: HourlyForecastAtOMPoint | null = null;
-        let minTimeDiff = Infinity;
-        for (const [timeIso, forecast] of Object.entries(pointForecasts)) {
-          const tMs = new Date(timeIso).getTime();
-          const diff = Math.abs(tMs - arrivalTimeMs);
-          if (diff < minTimeDiff) {
-            minTimeDiff = diff;
-            closestForecast = forecast;
-          }
-        }
+        const closestForecast = interpolateForecast(pointForecasts, arrivalTimeMs);
 
         if (closestForecast) {
           const temp = closestForecast.temperature2m !== undefined ? closestForecast.temperature2m : 20;
@@ -535,7 +576,7 @@ export default function Controls({
     onTimeRangeChange([newStart, newEnd]);
   };
 
-  const calculateRideScore = (startIndexSteps: number, durationSteps: number, routeData: RouteScoringDetails | null) => {
+  const calculateRideScore = (startIndexSteps: number, routeData: RouteScoringDetails | null) => {
     if (!routeData || !routeData.physics || !routeData.physics.distances || !routeData.forecastAtWeatherPoints) return { score: -Infinity, avgTemp: 0, avgRain: 0, avgWind: 0 };
 
     // Tweakable parameters for best start time calculation
@@ -550,75 +591,52 @@ export default function Controls({
     const baseTimeMs = baseDate.getTime();
     const stepMs = 30 * 60 * 1000;
     const startTimeMs = baseTimeMs + startIndexSteps * stepMs;
-    const durationMs = durationSteps * stepMs;
-
-
 
     let totalScore = 0;
     let ptCount = 0;
     let totalTemp = 0;
     let totalRain = 0;
     let totalEffectiveWind = 0;
-    let evaluatedDistance = 0;
 
-    // We can evaluate e.g. every 10th simulation point to save performance while retaining very high fidelity
-    const step = Math.max(1, Math.floor(routeSimulationPoints.length / 200));
-
-    for (let i = 0; i < routeSimulationPoints.length; i += step) {
-      const pt = routeSimulationPoints[i];
-
-      const arrivalTimeMs = startTimeMs + pt.fraction * durationMs;
+    for (const pt of thirtyMinuteIntervalPoints) {
+      const arrivalTimeMs = startTimeMs + pt.targetMs;
 
       const pointForecasts = routeData.forecastAtWeatherPoints[pt.wpId]?.forecastAtIntervals;
       if (!pointForecasts) continue;
 
-      let closestForecast: HourlyForecastAtOMPoint | null = null;
-      let minTimeDiff = Infinity;
-      for (const [timeIso, forecast] of Object.entries(pointForecasts)) {
-        const tMs = new Date(timeIso).getTime();
-        const diff = Math.abs(tMs - arrivalTimeMs);
-        if (diff < minTimeDiff) {
-          minTimeDiff = diff;
-          closestForecast = forecast;
-        }
-      }
+      const closestForecast = interpolateForecast(pointForecasts, arrivalTimeMs);
 
       if (closestForecast) {
         const windSpeed = closestForecast.windSpeed10m || 0;
         const windDir = closestForecast.windDirection10m || 0;
+        const bearing = pt.bearing || 0;
 
-        let segmentDist = 0;
-        for (let k = i; k < Math.min(i + step, routeSimulationPoints.length); k++) {
-          segmentDist += routeSimulationPoints[k].segmentDist;
-        }
-
-        evaluatedDistance += segmentDist;
-        const angleDiffRad = (windDir - pt.bearing) * Math.PI / 180;
+        const angleDiffRad = (windDir - bearing) * Math.PI / 180;
         const headwind = windSpeed * Math.cos(angleDiffRad);
 
-        totalEffectiveWind += (headwind * segmentDist);
+        totalEffectiveWind += headwind;
 
         let windScore = headwind > 0 ? -headwind * HEADWIND_WEIGHT : -headwind * TAILWIND_BONUS;
 
         const temp = closestForecast.temperature2m !== undefined ? closestForecast.temperature2m : IDEAL_TEMP;
         const tempScore = -Math.abs(temp - IDEAL_TEMP) * TEMP_WEIGHT;
-        totalTemp += temp * segmentDist;
+        totalTemp += temp;
 
         const rain = closestForecast.precipitation || 0;
         const rainScore = -rain * RAIN_WEIGHT;
-        totalRain += rain * segmentDist;
+        totalRain += rain;
 
         totalScore += (windScore + tempScore + rainScore);
         ptCount++;
       }
     }
 
-    if (evaluatedDistance === 0) return { score: -Infinity, avgTemp: 0, avgRain: 0, avgWind: 0 };
+    if (ptCount === 0) return { score: -Infinity, avgTemp: 0, avgRain: 0, avgWind: 0 };
     return {
       score: totalScore / ptCount,
-      avgTemp: totalTemp / evaluatedDistance,
-      avgRain: totalRain / evaluatedDistance,
-      avgWind: totalEffectiveWind / evaluatedDistance
+      avgTemp: totalTemp / ptCount,
+      avgRain: totalRain / ptCount,
+      avgWind: totalEffectiveWind / ptCount
     };
   };
 
@@ -630,7 +648,6 @@ export default function Controls({
     let bestRain = 0;
     let bestWind = 0;
 
-    const durationSteps = timeRange[1] - timeRange[0];
     const baseDate = getBaseDate(routeDateStr);
     const baseTimeMs = baseDate.getTime();
 
@@ -645,7 +662,7 @@ export default function Controls({
         continue;
       }
 
-      const res = calculateRideScore(step, durationSteps, data);
+      const res = calculateRideScore(step, data);
       if (res.score > bestScore) {
         bestScore = res.score;
         bestStep = step;
@@ -681,8 +698,7 @@ export default function Controls({
 
   const currentStartData = React.useMemo(() => {
     if (!hasData || !data) return null;
-    const durationSteps = timeRange[1] - timeRange[0];
-    const res = calculateRideScore(timeRange[0], durationSteps, data);
+    const res = calculateRideScore(timeRange[0], data);
     return {
       avgTemp: res.avgTemp,
       avgRain: res.avgRain,
@@ -927,31 +943,8 @@ export default function Controls({
                       const currentBg = getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing);
                       const nextBg = getWeatherColor(nextCard.forecast, (idx + 1) === selectedCardIndex, nextCard.bearing);
 
-                      const cardsInInterval = weatherCards.filter(c => c.uiTime === card.uiTime);
-                      let sumSin = 0;
-                      let sumCos = 0;
-                      let validCount = 0;
-                      for (const c of cardsInInterval) {
-                        if (c.bearing !== null && c.forecast?.windDirection10m !== undefined) {
-                          const rel = (c.forecast.windDirection10m + 180) - c.bearing;
-                          const rad = rel * Math.PI / 180;
-                          sumSin += Math.sin(rad);
-                          sumCos += Math.cos(rad);
-                          validCount++;
-                        }
-                      }
-
-                      let avgRelativeAngle = null;
-                      let showArrow = false;
-                      if (validCount > 0) {
-                        avgRelativeAngle = (Math.atan2(sumSin / validCount, sumCos / validCount) * 180 / Math.PI + 360) % 360;
-                        if ((avgRelativeAngle >= 0 && avgRelativeAngle <= 45) ||
-                          (avgRelativeAngle >= 315 && avgRelativeAngle <= 360)) {
-                          showArrow = true;
-                        } else if (avgRelativeAngle >= 135 && avgRelativeAngle <= 225) {
-                          showArrow = true;
-                        }
-                      }
+                      const avgRelativeAngle = card.forecast?.windDirection10m !== undefined ? (card.forecast.windDirection10m + 180) % 360 : null;
+                      const showArrow = avgRelativeAngle !== null;
 
                       var isSelected = selectedCardIndex >= 0 ? weatherCards[selectedCardIndex]?.uiTime === card.uiTime : false;
 
@@ -988,7 +981,7 @@ export default function Controls({
                             <Typography sx={{ fontWeight: 700, fontSize: '14px' }}>{card.forecast.temperature2m?.toFixed(0)}°C</Typography>
                             <Box sx={{ height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', my: '1px' }}>
                               {showArrow && avgRelativeAngle !== null ? (
-                                <North sx={{ fontSize: 16, transform: `rotate(${avgRelativeAngle + 180}deg)` }} />
+                                <North sx={{ fontSize: 16, transform: `rotate(${avgRelativeAngle}deg)` }} />
                               ) : (
                                 <Typography sx={{ fontWeight: 500, fontSize: '14px', lineHeight: 1 }}>-</Typography>
                               )}

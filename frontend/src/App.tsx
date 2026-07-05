@@ -4,7 +4,7 @@ import MapViewer from './components/MapViewer';
 import Controls from './components/Controls';
 import type { RouteScoringDetails } from './types';
 import { api } from './api';
-import { getBearing, getDistance, decodePolyline, getBaseDate } from './utils';
+import { getBearing, getDistance, decodePolyline, getBaseDate, interpolateForecast } from './utils';
 
 function App() {
   const [data, setData] = useState<RouteScoringDetails | null>(null);
@@ -158,16 +158,30 @@ function App() {
     const durationMs = endTimeMs - startTimeMs;
 
     const routePositions = decodePolyline(data.routePolyline);
-    const maxWpId = Object.keys(data.forecastAtWeatherPoints || {}).length - 1;
+
+    const weatherPtCoords = pts.map(ptId => {
+      const ptStr = data.weatherPoints[ptId];
+      if (!ptStr) return { ptId, lat: 0, lng: 0 };
+      const [lat, lng] = ptStr.split(',').map(Number);
+      return { ptId, lat, lng };
+    }).filter(wp => wp.lat !== 0 || wp.lng !== 0);
 
     const cards: any[] = [];
     let lastBearing: number | null = null;
 
+    const segmentDist = 25;
+
     let totalEffectiveDist = 0;
-    for (let i = 1; i < data.physics.distances.length; i++) {
-      const segDist = data.physics.distances[i] - data.physics.distances[i - 1];
-      const multiplier = data.physics.speedMultipliers[i] || 1.0;
-      totalEffectiveDist += segDist / multiplier;
+    let tempAccDist = 0;
+    let tempPhysicsIdx = 1;
+    for (let i = 1; i < routePositions.length; i++) {
+      const midpointDist = tempAccDist + segmentDist / 2;
+      while (tempPhysicsIdx < data.physics.distances.length - 1 && data.physics.distances[tempPhysicsIdx] < midpointDist) {
+        tempPhysicsIdx++;
+      }
+      const multiplier = data.physics.speedMultipliers[tempPhysicsIdx] || 1.0;
+      totalEffectiveDist += segmentDist / multiplier;
+      tempAccDist += segmentDist;
     }
     if (totalEffectiveDist === 0) totalEffectiveDist = 1;
 
@@ -176,28 +190,26 @@ function App() {
     let currentEffectiveTimeMs = 0;
     let nextTargetTimeMs = 0;
 
-    const pushCard = (targetMs: number, posIdx: number, exactTimeMs: number, currentDist: number) => {
-      const closestWpId = Math.min(maxWpId, Math.max(0, Math.round(currentDist / 4000)));
+    const pushCard = (targetMs: number, posIdx: number, exactTimeMs: number) => {
       const posLat = routePositions[posIdx][0];
       const posLng = routePositions[posIdx][1];
 
-      const pointForecasts = data.forecastAtWeatherPoints[closestWpId]?.forecastAtIntervals;
+      let closestWp = weatherPtCoords[0];
+      let minDist = Infinity;
+      for (const wp of weatherPtCoords) {
+        const d = getDistance(wp.lat, wp.lng, posLat, posLng);
+        if (d < minDist) {
+          minDist = d;
+          closestWp = wp;
+        }
+      }
+
+      const pointForecasts = data.forecastAtWeatherPoints[closestWp.ptId]?.forecastAtIntervals;
       if (!pointForecasts) return;
 
       const arrivalTimeMs = startTimeMs + targetMs;
-      let closestTimeIso = '';
-      let closestForecast = null;
-      let minDiff = Infinity;
-
-      for (const [timeIso, forecast] of Object.entries(pointForecasts)) {
-        const tMs = new Date(timeIso).getTime();
-        const diff = Math.abs(tMs - arrivalTimeMs);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closestTimeIso = timeIso;
-          closestForecast = forecast;
-        }
-      }
+      const closestForecast = interpolateForecast(pointForecasts, arrivalTimeMs);
+      const closestTimeIso = closestForecast?.time || '';
 
       if (closestForecast) {
         let bearing: number | null = null;
@@ -222,14 +234,10 @@ function App() {
       }
     };
 
-    pushCard(nextTargetTimeMs, 0, 0, 0);
+    pushCard(nextTargetTimeMs, 0, 0);
     nextTargetTimeMs += 30 * 60 * 1000;
 
     for (let i = 1; i < routePositions.length; i++) {
-      const p1 = routePositions[i - 1];
-      const p2 = routePositions[i];
-      const segmentDist = getDistance(p1[0], p1[1], p2[0], p2[1]) * 1000;
-
       const midpointDist = accumulatedDist + segmentDist / 2;
       while (physicsIdx < data.physics.distances.length - 1 && data.physics.distances[physicsIdx] < midpointDist) {
         physicsIdx++;
@@ -243,13 +251,13 @@ function App() {
       accumulatedDist += segmentDist;
 
       while (currentEffectiveTimeMs >= nextTargetTimeMs && nextTargetTimeMs <= durationMs) {
-        pushCard(nextTargetTimeMs, i, currentEffectiveTimeMs, accumulatedDist);
+        pushCard(nextTargetTimeMs, i, currentEffectiveTimeMs);
         nextTargetTimeMs += 30 * 60 * 1000;
       }
     }
 
     if (nextTargetTimeMs <= durationMs) {
-      pushCard(durationMs, routePositions.length - 1, currentEffectiveTimeMs, accumulatedDist);
+      pushCard(durationMs, routePositions.length - 1, currentEffectiveTimeMs);
     }
 
     return cards;

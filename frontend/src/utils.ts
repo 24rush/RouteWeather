@@ -1,3 +1,5 @@
+import type { HourlyForecastAtOMPoint } from './types';
+
 export const getBaseDate = (routeDateStr?: string | null) => {
   const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
   if (baseDate.getMinutes() <= 30 && baseDate.getMinutes() > 0) {
@@ -198,3 +200,64 @@ export const stepToHourString = (step: number, baseTime: Date): string => {
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
+
+export function interpolateForecast(
+  pointForecasts: Record<string, HourlyForecastAtOMPoint>,
+  arrivalTimeMs: number
+): HourlyForecastAtOMPoint | null {
+  const times = Object.keys(pointForecasts)
+    .map(timeIso => ({ timeIso, tMs: new Date(timeIso).getTime() }))
+    .sort((a, b) => a.tMs - b.tMs);
+
+  if (times.length === 0) return null;
+
+  if (arrivalTimeMs <= times[0].tMs) {
+    return pointForecasts[times[0].timeIso];
+  }
+  if (arrivalTimeMs >= times[times.length - 1].tMs) {
+    return pointForecasts[times[times.length - 1].timeIso];
+  }
+
+  let f1 = times[0];
+  let f2 = times[0];
+  for (let i = 0; i < times.length - 1; i++) {
+    if (arrivalTimeMs >= times[i].tMs && arrivalTimeMs <= times[i + 1].tMs) {
+      f1 = times[i];
+      f2 = times[i + 1];
+      break;
+    }
+  }
+
+  const t1 = f1.tMs;
+  const t2 = f2.tMs;
+  if (t1 === t2) return pointForecasts[f1.timeIso];
+
+  const fraction = (arrivalTimeMs - t1) / (t2 - t1);
+
+  const forecast1 = pointForecasts[f1.timeIso];
+  const forecast2 = pointForecasts[f2.timeIso];
+
+  const interpolate = (v1: number, v2: number) => {
+    if (v1 === undefined) return v2;
+    if (v2 === undefined) return v1;
+    return v1 + (v2 - v1) * fraction;
+  };
+
+  const interpolateAngle = (a1: number, a2: number) => {
+    if (a1 === undefined) return a2;
+    if (a2 === undefined) return a1;
+    let diff = (a2 - a1) % 360;
+    if (diff < -180) diff += 360;
+    if (diff > 180) diff -= 360;
+    return (a1 + diff * fraction + 360) % 360;
+  };
+
+  return {
+    time: new Date(arrivalTimeMs).toISOString(),
+    temperature2m: interpolate(forecast1.temperature2m, forecast2.temperature2m),
+    precipitationProbability: Math.round(interpolate(forecast1.precipitationProbability, forecast2.precipitationProbability) || 0),
+    precipitation: interpolate(forecast1.precipitation, forecast2.precipitation),
+    windSpeed10m: interpolate(forecast1.windSpeed10m, forecast2.windSpeed10m),
+    windDirection10m: interpolateAngle(forecast1.windDirection10m, forecast2.windDirection10m),
+  };
+}
