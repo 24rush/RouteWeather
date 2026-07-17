@@ -36,13 +36,75 @@ body,
   border: none;
 }
 
-.leaflet-layer,
-.leaflet-control-zoom-in,
-.leaflet-control-zoom-out,
-.leaflet-control-attribution {
-  /*--filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);*/
+/* Custom class: <Tooltip className="leaflet-glass-tooltip" permanent direction="top"> */
+.leaflet-glass-tooltip {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Hide standard leaflet tooltip triangle tip */
+.leaflet-glass-tooltip::before {
+  display: none !important;
 }
 
 .leaflet-container {
   background: #000
+}
+
+:root {
+  --bg-card: rgba(30, 30, 30, 0.7);
+  --border-card: rgba(255, 255, 255, 0.1);
+  --color-tailwind: #4ade80;
+  /* bright green */
+  --color-headwind: #f87171;
+  /* bright red */
+  --color-precip: #60a5fa;
+  /* light blue */
+}
+
+.weather-timeline {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #121212;
+  border-radius: 16px;
+  overflow-x: auto;
+}
+
+.weather-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  width: 72px;
+  padding: 12px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  transition: all 0.2s ease;
+}
+
+/* Color coding by weather quality */
+.weather-card.quality-perfect {
+  border-top: 4px solid var(--color-tailwind);
+}
+
+.weather-card .temp {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.weather-card .wind-info.wind-tailwind {
+  color: var(--color-tailwind);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.weather-card .precip-info {
+  color: var(--color-precip);
+  font-size: 0.75rem;
 }

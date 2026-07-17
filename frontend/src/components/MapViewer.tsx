@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Polyline, Marker, Tooltip, useMap } from 'react-leaflet';
 import type { RouteScoringDetails } from '../types';
-import { getWeatherColor, getWindColor, decodePolyline } from '../utils';
+import { getWindColor, decodePolyline, getWeatherCondition } from '../utils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useTheme } from '@mui/material/styles';
+import { MapWeatherMarker } from './MapWeatherMarker';
 
 // Fix for default marker icons in React Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -289,31 +290,28 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
 
       {routeChevrons.map((c, index) => <Marker key={`chevron-${index}`} position={[c.lat, c.lng]} icon={createChevronIcon(c.rotation, theme)} interactive={false} keyboard={false} />
       )}
-
       {weatherCards.map((m, index) => (
         m.forecast && (
-          <Marker key={index} position={[m.lat, m.lng]} icon={createWeatherIcon(m.forecast.windDirection10m, m.forecast.windSpeed10m, maxWindSpeed, theme)} zIndexOffset={index === selectedCardIndex ? 1000 : 0}>
+          <Marker
+            key={index}
+            position={[m.lat, m.lng]}
+            icon={createWeatherIcon(m.forecast.windDirection10m, m.forecast.windSpeed10m, maxWindSpeed, theme)}
+            zIndexOffset={index === selectedCardIndex ? 1000 : 0}
+          >
             <Tooltip direction="top" offset={[0, -10]} className="weather-tooltip" permanent={true}>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                lineHeight: 1.1,
-                padding: '4px 6px',
-                alignItems: 'center',
-                backgroundColor: getWeatherColor(m.forecast, index === selectedCardIndex, m.bearing),
-                borderRadius: '4px',
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.25)',
-                border: index === selectedCardIndex ? '2px solid white' : '1px solid',
-                borderColor: index === selectedCardIndex ? 'white' : theme.palette.divider,
-                color: theme.palette.background.paper,
-                transform: index === selectedCardIndex ? 'scale(1.1)' : 'scale(1)',
-                transition: 'all 0.2s ease-in-out'
-              }}>
-                <span style={{ fontWeight: 700, fontSize: '13px' }}>{m.forecast.temperature2m.toFixed(0)}°C</span>
-                <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.windSpeed10m.toFixed(0)} km/h</span>
-                <span style={{ fontWeight: 500, fontSize: '11px' }}>{m.forecast.precipitation.toFixed(1)} mm</span>
-                <span style={{ fontWeight: 700, fontSize: '11px' }}>{new Date((m as any).exactTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
-              </div>
+              <MapWeatherMarker
+                waypoint={{
+                  index,
+                  time: new Date((m as any).exactTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+                  temp: m.forecast.temperature2m.toFixed(0),
+                  condition: getWeatherCondition(m.forecast.precipitation, m.forecast.precipitationProbability, m.forecast.cloudCover),
+                  windSpeed: m.forecast.windSpeed10m.toFixed(0),
+                  windDirection: m.forecast.windDirection10m + 180,
+                  precipVolume: m.forecast.precipitation.toFixed(1),
+                  precipProb: m.forecast.precipitationProbability,
+                  highlighted: index === selectedCardIndex
+                }}
+              />
             </Tooltip>
           </Marker>
         )

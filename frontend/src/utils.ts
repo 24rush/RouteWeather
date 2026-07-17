@@ -1,7 +1,12 @@
 import type { HourlyForecastAtOMPoint } from './types';
 
 export const getBaseDate = (routeDateStr?: string | null) => {
-  const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
+  let baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
+
+  if (baseDate < new Date()) {
+    baseDate = new Date();
+  }
+
   if (baseDate.getMinutes() <= 30 && baseDate.getMinutes() > 0) {
     baseDate.setMinutes(30, 0, 0);
   } else {
@@ -57,6 +62,20 @@ function blendHues(h1: number, h2: number, factor: number) {
 }
 
 const STORM_BLUE = { h: 200, s: 75, l: 60 };
+
+export const getWeatherCondition = (precipitation: number, precipitationProbability: number, cloudCover: number): "sunny" | "partly-cloudy" | "cloudy" | "rainy" => {
+  let condition = "sunny";
+
+  if (precipitation > 0 || precipitationProbability > 50) {
+    condition = "rainy";
+  } else if (cloudCover > 70) {
+    condition = "cloudy";
+  } else if (cloudCover > 30) {
+    condition = "partly-cloudy";
+  }
+
+  return condition as "sunny" | "partly-cloudy" | "cloudy" | "rainy";
+}
 
 export const getRainyWeatherColor = (tempColorStr: string, rainProb: number, rainVol: number) => {
   const match = tempColorStr.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/i);
@@ -114,11 +133,8 @@ export const getWeatherColor = (forecast: any, isSelected: boolean, bearing: num
   const alpha = overrideAlpha !== undefined ? overrideAlpha : (isSelected ? 0.9 : 0.8);
 
   const colorByTemp = `hsla(${hue}, 95%, 50%, ${alpha})`;
-  if (precipVol > 0) {
-    return getRainyWeatherColor(colorByTemp, precipProb, precipVol);
-  }
 
-  return colorByTemp;
+  return precipVol > 0 ? getRainyWeatherColor(colorByTemp, precipProb, precipVol) : colorByTemp;
 };
 
 export const getTempColor = (temp?: number) => {
@@ -253,6 +269,8 @@ export function interpolateForecast(
   };
 
   return {
+    cloudCover: interpolate(forecast1.cloudCover, forecast2.cloudCover),
+    windGusts10m: interpolate(forecast1.windGusts10m, forecast2.windGusts10m),
     time: new Date(arrivalTimeMs).toISOString(),
     temperature2m: interpolate(forecast1.temperature2m, forecast2.temperature2m),
     precipitationProbability: Math.round(interpolate(forecast1.precipitationProbability, forecast2.precipitationProbability) || 0),

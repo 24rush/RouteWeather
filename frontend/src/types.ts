@@ -14,6 +14,8 @@ export interface HourlyForecastAtOMPoint {
     precipitation: number;
     windSpeed10m: number;
     windDirection10m: number;
+    cloudCover: number;
+    windGusts10m: number;
 }
 
 export interface WeatherForecast {

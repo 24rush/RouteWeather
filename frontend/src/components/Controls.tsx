@@ -1,11 +1,15 @@
 import React, { useState, useRef, useDeferredValue } from 'react';
-import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, IconButton, List, ListItem, ListItemButton, ListItemText } from '@mui/material';
+import { Box, Button, Slider, Typography, Paper, CircularProgress, Tabs, Tab, IconButton, List, ListItem, ListItemButton, ListItemText, Collapse } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
-import type { RouteScoringDetails, HourlyForecastAtOMPoint } from '../types';
-import { getWeatherColor, decodePolyline, getTempColor, getDistance, getBearing, stepToHourString, getBaseDate, interpolateForecast } from '../utils';
-import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, North, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air, Landscape, SwapCalls } from '@mui/icons-material';
+import type { RouteScoringDetails } from '../types';
+import { decodePolyline, stepToHourString, getBaseDate, interpolateForecast } from '../utils';
+import { simulateRideIntervals } from '../simulation';
+import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air, Landscape, SwapCalls, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { api } from '../api';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceArea } from 'recharts';
+import { WeatherTimeline } from './WeatherTimeline';
+import { WeatherSummaryDetails } from './WeatherSummaryDetails';
+import { PrecipDropletIcon, ThermometerIcon } from './Icons';
 
 
 
@@ -56,7 +60,7 @@ interface ControlsProps {
   setMaxSliderSteps: (val: number) => void;
   selectedCardIndex: number;
   onCardIndexChange: (index: number) => void;
-  weatherCards: { time: string; forecast: HourlyForecastAtOMPoint; bearing: number | null; lat: number; lng: number, uiTime: string }[];
+  weatherCards: { time: string; forecast: any; lat: number; lng: number; bearing: number | null, uiTime: number, exactTime: number }[];
   isDrawingMode: boolean;
   onToggleDrawingMode: (enabled: boolean) => void;
   onClearRoute: () => void;
@@ -81,15 +85,12 @@ export default function Controls({
   onLoadRoute,
   routeDateStr
 }: ControlsProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
   const [ownerRoutes, setOwnerRoutes] = useState<any[]>([]);
   const [selectedOwnerRoute, setSelectedOwnerRoute] = useState<any | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const handleAlertTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
@@ -143,30 +144,31 @@ export default function Controls({
     }
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!scrollRef.current) return;
-    setIsDragging(true);
-    setStartX(e.pageX - scrollRef.current.offsetLeft);
-    setScrollLeft(scrollRef.current.scrollLeft);
-  };
-
-  const handleMouseLeave = () => setIsDragging(false);
-  const handleMouseUp = () => setIsDragging(false);
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !scrollRef.current) return;
-    e.preventDefault();
-    const x = e.pageX - scrollRef.current.offsetLeft;
-    const walk = (x - startX) * 2;
-    scrollRef.current.scrollLeft = scrollLeft - walk;
-  };
-
   let durationDisplay = '';
   let baseTimeMs = 0;
 
   if (hasData) {
     const baseDate = getBaseDate(routeDateStr);
     baseTimeMs = baseDate.getTime();
+
+    // If no explicit routeDateStr is provided, align baseTimeMs with actual forecast data
+    if (!routeDateStr && data.forecastAtWeatherPoints) {
+      const firstWpId = Number(Object.keys(data.forecastAtWeatherPoints)[0]);
+      const pointForecasts = data.forecastAtWeatherPoints[firstWpId]?.forecastAtIntervals;
+      if (pointForecasts) {
+        const times = Object.keys(pointForecasts)
+          .map(timeIso => new Date(timeIso).getTime())
+          .sort((a, b) => a - b);
+        if (times.length > 0) {
+          const firstGreaterOrEqual = times.find(t => t >= baseTimeMs);
+          if (firstGreaterOrEqual !== undefined) {
+            baseTimeMs = firstGreaterOrEqual;
+          } else {
+            baseTimeMs = times[times.length - 1];
+          }
+        }
+      }
+    }
 
     const stepMs = 30 * 60 * 1000;
     const durationMs = (timeRange[1] - timeRange[0]) * stepMs;
@@ -243,100 +245,17 @@ export default function Controls({
 
   const thirtyMinuteIntervalPoints = React.useMemo(() => {
     if (!hasData || !data?.routePolyline || !data?.forecastAtWeatherPoints || !data?.weatherPoints) return [];
-    const routePositions = decodePolyline(data.routePolyline);
-
-    const pts = Object.keys(data.weatherPoints).map(Number).sort((a, b) => a - b);
-    const weatherPtCoords = pts.map(ptId => {
-      const ptStr = data.weatherPoints[ptId];
-      if (!ptStr) return { ptId, lat: 0, lng: 0 };
-      const [lat, lng] = ptStr.split(',').map(Number);
-      return { ptId, lat, lng };
-    }).filter(wp => wp.lat !== 0 || wp.lng !== 0);
 
     const durationSteps = timeRange[1] - timeRange[0];
     const stepMs = 30 * 60 * 1000;
     const durationMs = durationSteps * stepMs;
 
-    const segmentDist = 25;
-
-    let totalEffectiveDist = 0;
-    let tempAccDist = 0;
-    let tempPhysicsIdx = 1;
-    for (let i = 1; i < routePositions.length; i++) {
-      const midpointDist = tempAccDist + segmentDist / 2;
-      while (tempPhysicsIdx < data.physics.distances.length - 1 && data.physics.distances[tempPhysicsIdx] < midpointDist) {
-        tempPhysicsIdx++;
-      }
-      const multiplier = data.physics.speedMultipliers[tempPhysicsIdx] || 1.0;
-      totalEffectiveDist += segmentDist / multiplier;
-      tempAccDist += segmentDist;
-    }
-    if (totalEffectiveDist === 0) totalEffectiveDist = 1;
-
-    let physicsIdx = 1;
-    let accumulatedDist = 0;
-    let currentEffectiveTimeMs = 0;
-    let nextTargetTimeMs = 0;
-
-    const intervalPoints: any[] = [];
-
-    const addIntervalPoint = (targetMs: number, posIdx: number) => {
-      const posLat = routePositions[posIdx][0];
-      const posLng = routePositions[posIdx][1];
-
-      let closestWp = weatherPtCoords[0];
-      let minDist = Infinity;
-      for (const wp of weatherPtCoords) {
-        const d = getDistance(wp.lat, wp.lng, posLat, posLng);
-        if (d < minDist) {
-          minDist = d;
-          closestWp = wp;
-        }
-      }
-
-      let bearing = null;
-      for (let j = posIdx + 1; j < Math.min(posIdx + 15, routePositions.length); j++) {
-        if (routePositions[j][0] !== posLat || routePositions[j][1] !== posLng) {
-          bearing = getBearing(posLat, posLng, routePositions[j][0], routePositions[j][1]);
-          break;
-        }
-      }
-
-      intervalPoints.push({
-        targetMs,
-        posIdx,
-        bearing,
-        wpId: closestWp.ptId
-      });
-    };
-
-    addIntervalPoint(nextTargetTimeMs, 0);
-    nextTargetTimeMs += stepMs;
-
-    for (let i = 1; i < routePositions.length; i++) {
-      const midpointDist = accumulatedDist + segmentDist / 2;
-      while (physicsIdx < data.physics.distances.length - 1 && data.physics.distances[physicsIdx] < midpointDist) {
-        physicsIdx++;
-      }
-
-      const multiplier = data.physics.speedMultipliers[physicsIdx] || 1.0;
-      const effectiveSegment = segmentDist / multiplier;
-      const timeForSegmentMs = effectiveSegment * (durationMs / totalEffectiveDist);
-
-      currentEffectiveTimeMs += timeForSegmentMs;
-      accumulatedDist += segmentDist;
-
-      while (currentEffectiveTimeMs >= nextTargetTimeMs && nextTargetTimeMs <= durationMs) {
-        addIntervalPoint(nextTargetTimeMs, i);
-        nextTargetTimeMs += stepMs;
-      }
-    }
-
-    if (nextTargetTimeMs <= durationMs) {
-      addIntervalPoint(durationMs, routePositions.length - 1);
-    }
-
-    return intervalPoints;
+    return simulateRideIntervals(
+      data.routePolyline,
+      data.physics,
+      data.weatherPoints,
+      durationMs
+    );
   }, [data, hasData, timeRange]);
 
   React.useEffect(() => {
@@ -588,7 +507,26 @@ export default function Controls({
 
     const baseDate = routeDateStr ? new Date(routeDateStr) : new Date();
     baseDate.setHours(baseDate.getHours() + (baseDate.getMinutes() > 30 ? 1 : 0), baseDate.getMinutes() > 30 ? 0 : 30, 0, 0);
-    const baseTimeMs = baseDate.getTime();
+    let baseTimeMs = baseDate.getTime();
+
+    // If no explicit routeDateStr is provided, align baseTimeMs with actual forecast data
+    if (!routeDateStr && routeData.forecastAtWeatherPoints) {
+      const firstWpId = Number(Object.keys(routeData.forecastAtWeatherPoints)[0]);
+      const pointForecasts = routeData.forecastAtWeatherPoints[firstWpId]?.forecastAtIntervals;
+      if (pointForecasts) {
+        const times = Object.keys(pointForecasts)
+          .map(timeIso => new Date(timeIso).getTime())
+          .sort((a, b) => a - b);
+        if (times.length > 0) {
+          const firstGreaterOrEqual = times.find(t => t >= baseTimeMs);
+          if (firstGreaterOrEqual !== undefined) {
+            baseTimeMs = firstGreaterOrEqual;
+          } else {
+            baseTimeMs = times[times.length - 1];
+          }
+        }
+      }
+    }
     const stepMs = 30 * 60 * 1000;
     const startTimeMs = baseTimeMs + startIndexSteps * stepMs;
 
@@ -649,12 +587,41 @@ export default function Controls({
     let bestWind = 0;
 
     const baseDate = getBaseDate(routeDateStr);
-    const baseTimeMs = baseDate.getTime();
+    let baseTimeMs = baseDate.getTime();
+
+    // If no explicit routeDateStr is provided, align baseTimeMs with actual forecast data
+    if (!routeDateStr && data.forecastAtWeatherPoints) {
+      const firstWpId = Number(Object.keys(data.forecastAtWeatherPoints)[0]);
+      const pointForecasts = data.forecastAtWeatherPoints[firstWpId]?.forecastAtIntervals;
+      if (pointForecasts) {
+        const times = Object.keys(pointForecasts)
+          .map(timeIso => new Date(timeIso).getTime())
+          .sort((a, b) => a - b);
+        if (times.length > 0) {
+          const firstGreaterOrEqual = times.find(t => t >= baseTimeMs);
+          if (firstGreaterOrEqual !== undefined) {
+            baseTimeMs = firstGreaterOrEqual;
+          } else {
+            baseTimeMs = times[times.length - 1];
+          }
+        }
+      }
+    }
 
     // Evaluate up to MAX_START_STEPS
     for (let step = 0; step <= MAX_START_STEPS; step++) {
       const startMs = baseTimeMs + step * 30 * 60 * 1000;
       const startDate = new Date(startMs);
+      const baseDateObj = new Date(baseTimeMs);
+
+      // Only evaluate times on the exact same date as the base date
+      if (
+        startDate.getDate() !== baseDateObj.getDate() ||
+        startDate.getMonth() !== baseDateObj.getMonth() ||
+        startDate.getFullYear() !== baseDateObj.getFullYear()
+      ) {
+        break;
+      }
 
       // Cap start time to daylight hours (between 06:00 and 21:00 local time)
       const hour = startDate.getHours();
@@ -718,506 +685,470 @@ export default function Controls({
     <Paper
       elevation={4}
       sx={{
-        p: 2,
+        p: isCollapsed ? 0 : 1,
+        width: isCollapsed ? 48 : '100%',
+        minHeight: isCollapsed ? 48 : undefined,
+        transition: 'width 0.3s ease, min-height 0.3s ease, padding 0.3s ease',
+        overflow: 'hidden',
         display: 'flex',
+        borderRadius: 2,
         flexDirection: 'column',
         backdropFilter: 'blur(3px)',
-        backgroundColor: 'background.paper',
-        borderRadius: 3,
         border: '1px solid',
         borderColor: 'divider',
+        position: 'relative',
       }}
     >
-      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
-          {activeTab === 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                <Button
-                  component="label"
-                  variant="outlined"
-                  disabled={isUploading || isDrawingMode}
-                  startIcon={isUploading ? <CircularProgress size={20} sx={{}} /> : <FileUploadOutlined />}
-                  sx={{
-                    textTransform: 'none',
-                    borderRadius: 1,
-                    color: 'text.primary',
-                    backgroundColor: 'primary.main',
-                    '&:hover': { backgroundColor: 'primary.dark' }
-                  }}
-                >
-                  {isUploading ? 'Uploading...' : 'Upload GPX'}
-                  <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
-                </Button>
-                <Button
-                  variant="outlined"
-                  color={isDrawingMode ? "secondary" : undefined}
-                  onClick={() => onToggleDrawingMode(!isDrawingMode)}
-                  disabled={isUploading}
-                  startIcon={<GestureOutlined />}
-                  sx={{
-                    textTransform: 'none',
-                    borderRadius: 1,
-                    color: 'text.primary',
-                    backgroundColor: isDrawingMode ? 'primary' : 'secondary',
-                    '&:hover': { backgroundColor: isDrawingMode ? undefined : 'primary.dark' }
-                  }}
-                >
-                  {isDrawingMode ? 'Finish' : 'Draw Route'}
-                </Button>
-                {isDrawingMode && (
-                  <Button
-                    variant="contained"
-                    color="error"
-                    onClick={() => {
-                      setSelectedOwnerRoute(null);
-                      onClearRoute();
-                    }}
-                    disabled={isUploading}
-                    sx={{
-                      textTransform: 'none',
-                      borderRadius: 1,
-                      backgroundColor: 'rgba(211, 47, 47, 0.9)',
-                      '&:hover': { backgroundColor: 'rgba(198, 40, 40, 1)' }
-                    }}
-                    title="Clear Route and Load Demo"
-                  >
-                    <DeleteOutlineIcon fontSize="small" />
-                  </Button>
-                )}
-              </Box>
+      <IconButton
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        sx={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          zIndex: 10,
+          m: 1.5,
+          color: 'text.primary',
+          background: 'rgba(0,0,0,0.2)',
+          '&:hover': { background: 'rgba(0,0,0,0.4)' },
+          width: 24,
+          height: 24
+        }}
+      >
+        {isCollapsed ? <ExpandLess sx={{ fontSize: 18 }} /> : <ExpandMore sx={{ fontSize: 18 }} />}
+      </IconButton>
 
-              <Box sx={{ width: '100%' }}>
-                <Typography sx={{ pl: 0.25, mt: 1, fontSize: '0.8rem', fontWeight: 600 }}>
-                  Upcoming
-                </Typography>
-                <List sx={{ maxHeight: 200, overflow: 'auto', width: '100%', borderRadius: 1 }}>
-                  {ownerRoutes.length === 0 ? (
-                    <Typography variant="body2" sx={{ p: 2, textAlign: 'center', color: 'text.secondary', fontSize: '0.8rem' }}>No routes found.</Typography>
-                  ) : (
-                    ownerRoutes.map(route => {
-                      const startTimeStr = route.startTime ? new Date(route.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-                      const dateStart = new Date(route.startTime).toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' }) + ' ';
+      <Collapse in={!isCollapsed}>
+        <Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
+              {activeTab === 0 && (
+                <Box sx={{ display: 'flex', py: 5, px: 2, flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                    <Button
+                      component="label"
+                      variant="outlined"
+                      disabled={isUploading || isDrawingMode}
+                      startIcon={isUploading ? <CircularProgress size={20} sx={{}} /> : <FileUploadOutlined />}
+                      sx={{
+                        textTransform: 'none',
+                        borderRadius: 1,
+                        color: 'text.primary',
+                        backgroundColor: 'primary.main',
+                        '&:hover': { backgroundColor: 'primary.dark' }
+                      }}
+                    >
+                      {isUploading ? 'Uploading...' : 'Upload GPX'}
+                      <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color={isDrawingMode ? "secondary" : undefined}
+                      onClick={() => onToggleDrawingMode(!isDrawingMode)}
+                      disabled={isUploading}
+                      startIcon={<GestureOutlined />}
+                      sx={{
+                        textTransform: 'none',
+                        borderRadius: 1,
+                        color: 'text.primary',
+                        backgroundColor: isDrawingMode ? 'primary' : 'secondary',
+                        '&:hover': { backgroundColor: isDrawingMode ? undefined : 'primary.dark' }
+                      }}
+                    >
+                      {isDrawingMode ? 'Finish' : 'Draw Route'}
+                    </Button>
+                    {isDrawingMode && (
+                      <Button
+                        variant="contained"
+                        color="error"
+                        onClick={() => {
+                          setSelectedOwnerRoute(null);
+                          onClearRoute();
+                        }}
+                        disabled={isUploading}
+                        sx={{
+                          textTransform: 'none',
+                          borderRadius: 1,
+                          backgroundColor: 'rgba(211, 47, 47, 0.9)',
+                          '&:hover': { backgroundColor: 'rgba(198, 40, 40, 1)' }
+                        }}
+                        title="Clear Route and Load Demo"
+                      >
+                        <DeleteOutlineIcon fontSize="small" />
+                      </Button>
+                    )}
+                  </Box>
 
-                      const distKm = (route.distance / 1000).toFixed(1);
-                      return (
-                        <ListItem key={route.id} disablePadding sx={{ mb: 0.5 }}>
-                          <ListItemButton
-                            onClick={() => {
-                              setSelectedOwnerRoute(route);
-                              onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined);
-                            }}
-                            sx={{ bgcolor: 'background.paper', borderRadius: 1, px: 1, '&:hover': { bgcolor: 'action.hover' } }}
-                          >
-                            <ListItemText
-                              primary={
-                                <Typography sx={{ fontSize: '0.8rem', color: 'text.primary', fontWeight: 600 }}>
-                                  {route.name}
-                                </Typography>
-                              }
-                              secondary={
-                                <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                                  {<>
-                                    {`${startTimeStr ? dateStart + '   ' + startTimeStr : ''} `}
-                                    {<SwapCalls sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} />} {distKm}km
-                                    {route.elevation && (<> <Landscape sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} /> {`${route.elevation}m`}
-                                    </>)}
-                                  </>}
-                                </Typography>
-                              }
-                            />
-                            {route.routePolyline && (
-                              <RouteThumbnail polylineStr={route.routePolyline} />
-                            )}
-                          </ListItemButton>
-                        </ListItem>
-                      );
-                    })
-                  )}
-                </List>
-              </Box>
-            </Box>
-          )}
+                  <Box sx={{ width: '100%' }}>
+                    <Typography sx={{ pl: 0.25, mt: 1, fontSize: '0.8rem', fontWeight: 600 }}>
+                      Upcoming
+                    </Typography>
+                    <List sx={{ maxHeight: 200, overflow: 'auto', width: '100%', borderRadius: 1 }}>
+                      {(() => {
+                        const upcomingRoutes = ownerRoutes.filter(r => r.startTime && new Date(r.startTime).getTime() >= Date.now());
+                        return upcomingRoutes.length === 0 ? (
+                          <Typography variant="body2" sx={{ p: 2, textAlign: 'center', color: 'text.secondary', fontSize: '0.8rem' }}>No upcoming routes found.</Typography>
+                        ) : (
+                          upcomingRoutes.map(route => {
+                            const startTimeStr = route.startTime ? new Date(route.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+                            const dateStart = new Date(route.startTime).toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' }) + ' ';
 
-          {activeTab === 1 && hasData && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              {selectedOwnerRoute ? (
-                <Box sx={{
-                  borderRadius: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  py: 1
-                }}>
-                  <Typography variant="body2" sx={{ fontWeight: 800, fontSize: '0.95rem', color: 'text.primary', textAlign: 'center' }}>
-                    {selectedOwnerRoute.name}
-                  </Typography>
-                </Box>
-              ) : bestStartData && (
-                <Box sx={{
-                  borderRadius: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65em', color: 'text.secondary' }}>
-                    BEST START TIME
-                  </Typography>
-                  {bestStartData.noOptimalTime ? (
-                    <Typography variant="caption" sx={{ fontWeight: 600 }}>No daylight times left today</Typography>
-                  ) : (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
-                      <Typography variant="caption" sx={{ fontWeight: 700 }}>{bestStartData.timeStr}</Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                        <Thermostat sx={{ fontSize: 14 }} />
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgTemp.toFixed(1)}°C</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                        <WaterDrop sx={{ fontSize: 14 }} />
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgRain.toFixed(1)}mm</Typography>
-                      </Box>
-                      {Math.abs(bestStartData.avgWind) >= 1.0 && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                          <Air sx={{ fontSize: 14 }} />
-                          <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                            {bestStartData.avgWind > 0 ? `${bestStartData.avgWind.toFixed(0)}km/h hw` : `${Math.abs(bestStartData.avgWind).toFixed(0)}km/h tw`}
-                          </Typography>
-                        </Box>
-                      )}
-                    </Box>
-                  )
-                  }
-                </Box>
-              )}
-              {weatherCards.length > 0 && (
-                <Box sx={{
-                  position: 'relative',
-                  overflow: 'hidden',
-                  mt: 1,
-                  '&::before': {
-                    content: "''",
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 20,
-                    background: "linear-gradient(to right, #1e1e1e54, rgba(0,0,0,0))",
-                    pointerEvents: 'none',
-                    zIndex: 1,
-                  },
-                  '&::after': {
-                    content: "''",
-                    position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 20,
-                    background: "linear-gradient(to left, #1e1e1e54, rgba(0,0,0,0))",
-                    pointerEvents: 'none',
-                    zIndex: 1,
-                  },
-                }}>
-                  <Box
-                    ref={scrollRef}
-                    onMouseDown={handleMouseDown}
-                    onMouseLeave={handleMouseLeave}
-                    onMouseUp={handleMouseUp}
-                    onMouseMove={handleMouseMove}
-                    sx={{
-                      display: 'flex',
-
-                      overflowX: 'auto',
-                      scrollbarWidth: 'none',
-                      cursor: isDragging ? 'grabbing' : 'grab',
-                      '&::-webkit-scrollbar': { height: 6 },
-                      '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 0 },
-                    }}
-                  >
-                    {weatherCards.filter((card, index, self) => index === self.findIndex(c => c.uiTime === card.uiTime)).map((card, idx, uniqueCards) => {
-                      const date = new Date(card.uiTime);
-                      const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-
-                      const nextCard = uniqueCards[idx + 1] || card;
-                      const currentBg = getWeatherColor(card.forecast, idx === selectedCardIndex, card.bearing);
-                      const nextBg = getWeatherColor(nextCard.forecast, (idx + 1) === selectedCardIndex, nextCard.bearing);
-
-                      const avgRelativeAngle = card.forecast?.windDirection10m !== undefined ? (card.forecast.windDirection10m + 180) % 360 : null;
-                      const showArrow = avgRelativeAngle !== null;
-
-                      var isSelected = selectedCardIndex >= 0 ? weatherCards[selectedCardIndex]?.uiTime === card.uiTime : false;
-
-                      return (
-                        <Paper
-                          key={card.uiTime}
-                          elevation={isSelected ? 6 : 2}
-                          onClick={() => {
-                            var originalIndex = weatherCards.findIndex(c => c.uiTime === card.uiTime);
-                            if (originalIndex == selectedCardIndex) { originalIndex = -1; }
-                            onCardIndexChange(originalIndex);
-                          }}
-                          sx={{
-                            minWidth: 50,
-                            p: 0.25,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            color: '#1E293B',
-                            background: `linear-gradient(to right, ${currentBg}, ${nextBg})`,
-                            borderRadius: 0,
-                            cursor: 'pointer',
-                            userSelect: 'none',
-                            boxShadow: isSelected ? 'inset 0 -3px 0 #fff, 0px 6px 12px -2px rgba(255, 255, 255, 0.8)' : 'none',
-                            borderTop: `3px solid ${getTempColor(card.forecast?.temperature2m)}`,
-                            borderRight: idx === uniqueCards.length - 1 ? 'none' : '1px solid rgba(0, 0, 0, .4)',
-                            borderBottom: 'none',
-                            transition: 'border-color 0.2s, box-shadow 0.2s',
-                            '&:active': { boxShadow: 'none' },
-                            '&:focus': { boxShadow: 'none' },
-                          }}
-                        >
-                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <Typography sx={{ fontWeight: 700, fontSize: '14px' }}>{card.forecast.temperature2m?.toFixed(0)}°C</Typography>
-                            <Box sx={{ height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', my: '1px' }}>
-                              {showArrow && avgRelativeAngle !== null ? (
-                                <North sx={{ fontSize: 16, transform: `rotate(${avgRelativeAngle}deg)` }} />
-                              ) : (
-                                <Typography sx={{ fontWeight: 500, fontSize: '14px', lineHeight: 1 }}>-</Typography>
-                              )}
-                            </Box>
-                            <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitationProbability?.toFixed(0)}%</Typography>
-                            <Typography sx={{ fontWeight: 500, fontSize: '11px', lineHeight: 1.05 }}>{card.forecast.precipitation == 0 ? "0" : card.forecast.precipitation?.toFixed(1)} mm</Typography>
-                            <Typography sx={{ fontWeight: 700, fontSize: '11px', opacity: 0.6 }}>{timeString}</Typography>
-                          </Box>
-                        </Paper>
-                      );
-                    })}
+                            const distKm = (route.distance / 1000).toFixed(1);
+                            return (
+                              <ListItem key={route.id} disablePadding sx={{}}>
+                                <ListItemButton
+                                  onClick={() => {
+                                    setSelectedOwnerRoute(route);
+                                    onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined);
+                                  }}
+                                  sx={{ bgcolor: 'background.paper', borderRadius: 1, px: 1, '&:hover': { bgcolor: 'action.hover' } }}
+                                >
+                                  <ListItemText
+                                    primary={
+                                      <Typography sx={{ fontSize: '0.8rem', color: 'text.primary', fontWeight: 600 }}>
+                                        {route.name}
+                                      </Typography>
+                                    }
+                                    secondary={
+                                      <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                                        {<>
+                                          {`${startTimeStr ? dateStart + '   ' + startTimeStr : ''} `}
+                                          {<SwapCalls sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} />} {distKm}km
+                                          {route.elevation && (<> <Landscape sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} /> {`${route.elevation}m`}
+                                          </>)}
+                                        </>}
+                                      </Typography>
+                                    }
+                                  />
+                                  {route.routePolyline && (
+                                    <RouteThumbnail polylineStr={route.routePolyline} />
+                                  )}
+                                </ListItemButton>
+                              </ListItem>
+                            );
+                          })
+                        )
+                      })()}
+                    </List>
                   </Box>
                 </Box>
               )}
 
-            </Box>
-          )}
-
-          {activeTab === 2 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{
-                height: 140,
-                position: 'relative',
-                overflow: 'hidden',
-                flexShrink: 0,
-                '& *:focus': { outline: 'none !important' },
-                '& .recharts-wrapper, & .recharts-surface': { outline: 'none !important' }
-              }}>
-                <ResponsiveContainer width="100%" height="100%" style={{ outline: 'none' }}>
-                  <AreaChart data={elevationData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }} style={{ outline: 'none' }}>
-                    <XAxis dataKey="distance" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(val) => val.toFixed(0) + 'km'} tick={{ fontSize: 10, fill: '#fff' }} />
-                    <YAxis
-                      dataKey="elevation"
-                      domain={yDomain}
-                      tickFormatter={(val) => val.toFixed(0) + 'm'}
-                      tick={{ fontSize: 10, fill: '#fff' }}
-                    />
-                    {elevationSections.map((sec) => (
-                      <ReferenceArea
-                        key={sec.key}
-                        x1={sec.x1}
-                        x2={sec.x2}
-                        fill={sec.color}
-                        fillOpacity={1}
-                        strokeOpacity={0}
-                      />
-                    ))}
-                    <Area type="monotone" dataKey="elevation" stroke="#2295f3ff" fill="#61b8ffff" fillOpacity={0.75} isAnimationActive={false} activeDot={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </Box>
-
-              {sectionWeatherData.length > 0 && (
-                <Box
-                  onTouchStart={handleAlertTouchStart}
-                  onTouchEnd={(e) => {
-                    if (touchStartXRef.current === null) return;
-                    const diff = touchStartXRef.current - e.changedTouches[0].clientX;
-                    if (diff > 50) {
-                      setActiveSectionIndex(prev => Math.min(sectionWeatherData.length - 1, prev + 1));
-                    } else if (diff < -50) {
-                      setActiveSectionIndex(prev => Math.max(0, prev - 1));
-                    }
-                    touchStartXRef.current = null;
-                  }}
-                  sx={{ display: 'flex', alignItems: 'center', mt: 0.5, color: 'text.secondary', backgroundColor: 'background.paper', borderRadius: 1, p: 0.5 }}
-                >
-                  <IconButton
-                    size="small"
-                    onClick={() => setActiveSectionIndex(prev => Math.max(0, prev - 1))}
-                    disabled={activeSectionIndex === 0}
-                    sx={{ p: 0.5, color: 'text.secondary' }}
-                  >
-                    <NavigateBefore fontSize="small" />
-                  </IconButton>
-
-                  <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', minWidth: 0, px: 0.5, userSelect: 'none' }}>
-                    {(() => {
-                      const activeSec = sectionWeatherData[activeSectionIndex];
-                      if (!activeSec) return null;
-                      return (
-                        <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between', color: 'text.primary' }}>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '11px' }}>
-                                At {activeSec.startKm}km (~{activeSec.startTimeStr})
-                              </Typography>
-                            </Box>
-
-                            {activeSec.alerts.length > 0 ? (
-                              <Box sx={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                color: '#ed6c02',
-                                overflowY: 'auto',
-                                maxHeight: '60px',
-                                '&::-webkit-scrollbar': { width: '4px' },
-                                '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(237, 108, 2, 0.4)', borderRadius: '4px' },
-                                msOverflowStyle: 'auto',
-                                scrollbarWidth: 'thin'
-                              }}>
-                                {activeSec.alerts.map((alert: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode>>, i: React.Key) => (
-                                  <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-                                    <WarningAmberRounded sx={{ fontSize: 14 }} />
-                                    <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>
-                                      {alert}
-                                    </Typography>
-                                  </Box>
-                                ))}
-                              </Box>
-                            ) : (
-                              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '11px', color: 'rgba(57, 212, 65, 1)', userSelect: 'none' }}>
-                                No severe weather
-                              </Typography>
-                            )}
+              {activeTab === 1 && hasData && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  {selectedOwnerRoute ? (
+                    <Box sx={{
+                      borderRadius: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Typography variant="body2" sx={{ fontWeight: 800, fontSize: '0.95rem', color: 'text.primary', textAlign: 'center' }}>
+                        {selectedOwnerRoute.name}
+                      </Typography>
+                    </Box>
+                  ) : bestStartData && (
+                    <Box sx={{
+                      borderRadius: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65em', color: 'text.secondary' }}>
+                        BEST START TIME
+                      </Typography>
+                      {bestStartData.noOptimalTime ? (
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>No daylight times left today</Typography>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700 }}>{bestStartData.timeStr}</Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                            <ThermometerIcon sx={{ fontSize: 14 }} />
+                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgTemp.toFixed(1)}°C</Typography>
                           </Box>
-
-                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', ml: 1, minWidth: 'max-content' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                                <Thermostat sx={{ fontSize: 14 }} />
-                                <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>{activeSec.avgTemp.toFixed(1)}°C</Typography>
-                              </Box>
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                                <WaterDrop sx={{ fontSize: 14 }} />
-                                <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>{activeSec.avgRain.toFixed(1)}mm</Typography>
-                              </Box>
-                            </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                            <PrecipDropletIcon sx={{ fontSize: 14 }} />
+                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{bestStartData.avgRain.toFixed(1)}mm</Typography>
+                          </Box>
+                          {Math.abs(bestStartData.avgWind) >= 1.0 && (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                               <Air sx={{ fontSize: 14 }} />
-                              <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>
-                                {Math.abs(activeSec.avgWind) >= 1.0 ? (activeSec.avgWind > 0 ? `${activeSec.avgWind.toFixed(0)}km/h hw` : `${Math.abs(activeSec.avgWind).toFixed(0)}km/h tw`) : 'Neutral wind'}
+                              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                {bestStartData.avgWind > 0 ? `${bestStartData.avgWind.toFixed(0)}km/h hw` : `${Math.abs(bestStartData.avgWind).toFixed(0)}km/h tw`}
                               </Typography>
                             </Box>
-                          </Box>
+                          )}
                         </Box>
-                      );
-                    })()}
-                  </Box>
-
-                  <IconButton
-                    size="small"
-                    onClick={() => setActiveSectionIndex(prev => Math.min(sectionWeatherData.length - 1, prev + 1))}
-                    disabled={activeSectionIndex >= sectionWeatherData.length - 1}
-                    sx={{ p: 0.5, color: 'text.secondary' }}
-                  >
-                    <NavigateNext fontSize="small" />
-                  </IconButton>
+                      )
+                      }
+                    </Box>
+                  )}
+                  {hasData && (
+                    <WeatherTimeline
+                      weatherCards={weatherCards}
+                      selectedCardIndex={selectedCardIndex}
+                      onCardIndexChange={onCardIndexChange}
+                    />
+                  )}
                 </Box>
               )}
 
-            </Box>
-          )}
+              {activeTab === 2 && (
+                <Box sx={{ display: 'flex', flexDirection: 'column', pt: 4, pb: 1 }}>
+                  <Box sx={{
+                    height: 140,
+                    position: 'relative',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                    '& *:focus': { outline: 'none !important' },
+                    '& .recharts-wrapper, & .recharts-surface': { outline: 'none !important' }
+                  }}>
+                    <ResponsiveContainer width="100%" height="100%" style={{ outline: 'none' }}>
+                      <AreaChart data={elevationData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }} style={{ outline: 'none' }}>
+                        <XAxis dataKey="distance" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(val) => val.toFixed(0) + 'km'} tick={{ fontSize: 10, fill: '#fff' }} />
+                        <YAxis
+                          dataKey="elevation"
+                          domain={yDomain}
+                          tickFormatter={(val) => val.toFixed(0) + 'm'}
+                          tick={{ fontSize: 10, fill: '#fff' }}
+                        />
+                        {elevationSections.map((sec) => (
+                          <ReferenceArea
+                            key={sec.key}
+                            x1={sec.x1}
+                            x2={sec.x2}
+                            fill={sec.color}
+                            fillOpacity={1}
+                            strokeOpacity={0}
+                          />
+                        ))}
+                        <Area type="monotone" dataKey="elevation" stroke="#2295f3ff" fill="#61b8ffff" fillOpacity={0.75} isAnimationActive={false} activeDot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </Box>
 
-          {activeTab !== 0 && hasData && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', mt: 1 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', pt: 4 }}>
-                <Slider
-                  sx={{
-                    ml: 1,
-                    color: 'primary.main',
-                    '& .MuiSlider-thumb': {},
-                  }}
-                  value={timeRange}
-                  onChange={handleSliderChange}
-                  step={1}
-                  min={0}
-                  max={maxSliderSteps}
-                  disableSwap
-                  // Show formatted time on each thumb
-                  valueLabelDisplay="on"
-                  valueLabelFormat={(step) => stepToHourString(step, new Date(baseTimeMs))}
-                />
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  {currentStartData && (
-                    <>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                        <Thermostat sx={{ fontSize: 14 }} />
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{currentStartData.avgTemp.toFixed(1)}°C</Typography>
+                  {sectionWeatherData.length > 0 && (
+                    <Box
+                      onTouchStart={handleAlertTouchStart}
+                      onTouchEnd={(e) => {
+                        if (touchStartXRef.current === null) return;
+                        const diff = touchStartXRef.current - e.changedTouches[0].clientX;
+                        if (diff > 50) {
+                          setActiveSectionIndex(prev => Math.min(sectionWeatherData.length - 1, prev + 1));
+                        } else if (diff < -50) {
+                          setActiveSectionIndex(prev => Math.max(0, prev - 1));
+                        }
+                        touchStartXRef.current = null;
+                      }}
+                      sx={{ display: 'flex', alignItems: 'center', mt: 0.5, color: 'text.secondary', backgroundColor: 'background.paper', borderRadius: 1, p: 0.5 }}
+                    >
+                      <IconButton
+                        size="small"
+                        onClick={() => setActiveSectionIndex(prev => Math.max(0, prev - 1))}
+                        disabled={activeSectionIndex === 0}
+                        sx={{ p: 0.5, color: 'text.secondary' }}
+                      >
+                        <NavigateBefore fontSize="small" />
+                      </IconButton>
+
+                      <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', minWidth: 0, px: 0.5, userSelect: 'none' }}>
+                        {(() => {
+                          const activeSec = sectionWeatherData[activeSectionIndex];
+                          if (!activeSec) return null;
+                          return (
+                            <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start', justifyContent: 'space-between', color: 'text.primary' }}>
+                              <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '11px' }}>
+                                    At {activeSec.startKm}km (~{activeSec.startTimeStr})
+                                  </Typography>
+                                </Box>
+
+                                {activeSec.alerts.length > 0 ? (
+                                  <Box sx={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    color: '#ed6c02',
+                                    overflowY: 'auto',
+                                    maxHeight: '60px',
+                                    '&::-webkit-scrollbar': { width: '4px' },
+                                    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(237, 108, 2, 0.4)', borderRadius: '4px' },
+                                    msOverflowStyle: 'auto',
+                                    scrollbarWidth: 'thin'
+                                  }}>
+                                    {activeSec.alerts.map((alert: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<any>> | Iterable<React.ReactNode>>, i: React.Key) => (
+                                      <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                                        <WarningAmberRounded sx={{ fontSize: 14 }} />
+                                        <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>
+                                          {alert}
+                                        </Typography>
+                                      </Box>
+                                    ))}
+                                  </Box>
+                                ) : (
+                                  <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '11px', color: 'rgba(57, 212, 65, 1)', userSelect: 'none' }}>
+                                    No severe weather
+                                  </Typography>
+                                )}
+                              </Box>
+
+                              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', ml: 1, minWidth: 'max-content' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                                    <Thermostat sx={{ fontSize: 14 }} />
+                                    <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>{activeSec.avgTemp.toFixed(1)}°C</Typography>
+                                  </Box>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                                    <WaterDrop sx={{ fontSize: 14 }} />
+                                    <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>{activeSec.avgRain.toFixed(1)}mm</Typography>
+                                  </Box>
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                                  <Air sx={{ fontSize: 14 }} />
+                                  <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>
+                                    {Math.abs(activeSec.avgWind) >= 1.0 ? (activeSec.avgWind > 0 ? `${activeSec.avgWind.toFixed(0)}km/h hw` : `${Math.abs(activeSec.avgWind).toFixed(0)}km/h tw`) : 'Neutral wind'}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </Box>
+                          );
+                        })()}
                       </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                        <WaterDrop sx={{ fontSize: 14 }} />
-                        <Typography variant="caption" sx={{ fontWeight: 600 }}>{currentStartData.avgRain.toFixed(1)}mm</Typography>
-                      </Box>
-                      {Math.abs(currentStartData.avgWind ?? 0) >= 1.0 && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                          <Air sx={{ fontSize: 14 }} />
-                          <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                            {currentStartData.avgWind > 0 ? `${currentStartData.avgWind.toFixed(0)}km/h hw` : `${Math.abs(currentStartData.avgWind).toFixed(0)}km/h tw`}
-                          </Typography>
-                        </Box>
-                      )}
-                    </>
+
+                      <IconButton
+                        size="small"
+                        onClick={() => setActiveSectionIndex(prev => Math.min(sectionWeatherData.length - 1, prev + 1))}
+                        disabled={activeSectionIndex >= sectionWeatherData.length - 1}
+                        sx={{ p: 0.5, color: 'text.secondary' }}
+                      >
+                        <NavigateNext fontSize="small" />
+                      </IconButton>
+                    </Box>
                   )}
-                </Box>
-              </Box>
-              <Typography variant="caption" sx={{ fontWeight: 700, textAlign: 'center', mt: 0.75 }}>
-                {((data?.physics.distances[data?.physics.distances.length - 1] ?? 0) / 1000.0).toFixed(0)}km in {durationDisplay}
-              </Typography>
-            </Box>
-          )}
-        </Box>
 
-        <Tabs
-          value={activeTab}
-          onChange={handleTabChange}
-          aria-label="Route Data Tabs"
-          centered
-          sx={{
-            minHeight: '36px',
-            '& .MuiTabs-indicator': {
-              backgroundColor: '#1976d2'
-            },
-            '& .MuiTab-root': {
-              minWidth: 0,
-              px: 2,
+                </Box>
+              )}
+
+              {activeTab !== 0 && hasData && (
+                <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', px: 1.5, mb: 0.5 }}>
+                      <Typography variant="caption" sx={{ fontSize: '0.85em', color: '#e2e8f0', fontWeight: 600 }}>
+                        {stepToHourString(timeRange[0], new Date(baseTimeMs))}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontSize: '0.85em', color: '#e2e8f0', fontWeight: 600 }}>
+                        {stepToHourString(timeRange[1], new Date(baseTimeMs))}
+                      </Typography>
+                    </Box>
+                    <Slider
+                      sx={{
+                        ml: 3,
+                        width: "95%",
+                        color: 'primary.main',
+                        '& .MuiSlider-track': {
+                          height: 6,
+                          backgroundColor: '#a3e635',
+                          border: 'none',
+                          boxShadow: '0 0 6px #a3e635, 0 0 20px #a3e635',
+                        },
+
+                        // 2. INACTIVE BACKGROUND RAIL (Dark Matte Slate & Thin Glass Border)
+                        '& .MuiSlider-rail': {
+                          height: 4,
+                          width: "95%",
+                          backgroundColor: '#23282a',
+                          opacity: 1,
+                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                        },
+                        '& .MuiSlider-thumb': {
+                          width: 20,
+                          height: 24,
+                          borderRadius: '4px', // Rounded rectangles matching mockup
+                          backgroundColor: '#1b1d1f',
+                          boxShadow: '0 0 8px #a3e635',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+
+                          // Render the vertical drag handle bars ("||")
+                          '&::before': {
+                            content: '""',
+                            width: 3.5,
+                            height: 10,
+                            borderLeft: '1.5px solid #a3e635',
+                            borderRight: '1.5px solid #a3e635',
+                            backgroundColor: 'transparent',
+                          },
+
+                          // Interaction Hover/Focus effects
+                          '&:hover, &.Mui-focusVisible': {
+                            boxShadow: '0 0 10px #a2e63583',
+                          },
+                          '&.Mui-active': {
+                            boxShadow: '0 0 12px #a2e6357e',
+                          },
+
+                        },
+                      }}
+                      value={timeRange}
+                      onChange={handleSliderChange}
+                      step={1}
+                      min={0}
+                      max={maxSliderSteps}
+                      disableSwap
+                      // Hide tooltips since we show labels above
+                      valueLabelDisplay="off"
+                      valueLabelFormat={(step) => stepToHourString(step, new Date(baseTimeMs))}
+                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      {currentStartData && (
+                        <>
+                          <WeatherSummaryDetails distance={((data?.physics.distances[data?.physics.distances.length - 1] ?? 0) / 1000.0).toFixed(0)} duration={durationDisplay} avgTemp={currentStartData.avgTemp} avgRain={currentStartData.avgRain} avgWind={currentStartData.avgWind} />
+                        </>
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          </Box>
+          <Tabs
+            value={activeTab}
+            onChange={handleTabChange}
+            aria-label="Route Data Tabs"
+            centered
+            sx={{
+              width: '100%',
+              minWidth: '310px',
               minHeight: '36px',
-              py: 0.5,
-              color: '#64b5f6', // Solid pale blue
-              '&.Mui-selected': {
-                color: '#1976d2'
+              '& .MuiTabs-indicator': {
+                backgroundColor: '#47aad0ff'
               },
-              '&.Mui-disabled': {
-                color: '#9e9e9e', // Solid grey so it doesn't look washed out
-                opacity: 0.6
+              '& .MuiTab-root': {
+                minWidth: 0,
+                px: 2,
+                minHeight: '36px',
+                py: 0.5,
+                color: '#4698fc94',
+                '&.Mui-selected': {
+                  color: '#4698fcff'
+                },
+                '&.Mui-disabled': {
+                  color: '#475569 ',
+                  opacity: 0.6
+                }
               }
-            }
-          }}
-        >
-          <Tab icon={<FileUploadOutlined />} aria-label="Upload" />
-          <Tab icon={<Cloud />} aria-label="Weather" disabled={!hasData} />
-          {hasElevationData && (
-            <Tab icon={<Terrain />} aria-label="Elevation Profile" disabled={!hasData} />
-          )}
-        </Tabs>
-      </Box>
+            }}
+          >
+            <Tab icon={<FileUploadOutlined />} aria-label="Upload" />
+            <Tab icon={<Cloud />} aria-label="Weather" disabled={!hasData} />
+            {hasElevationData && (
+              <Tab icon={<Terrain />} aria-label="Elevation Profile" disabled={!hasData} />
+            )}
+          </Tabs>
+        </Box>
+      </Collapse>
     </Paper>
   );
 }
