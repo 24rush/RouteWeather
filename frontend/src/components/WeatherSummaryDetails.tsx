@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 
-import { ClockIcon, ThermometerIcon, WindIcon, PrecipDropletIcon, DistanceIcon } from './Icons';
+import { ThermometerIcon, WindIcon, PrecipDropletIcon, DistanceIcon } from './Icons';
 
 interface SummaryDetailProps {
     label: string;
@@ -43,14 +43,13 @@ const SummaryDetail: React.FC<SummaryDetailProps> = ({ label, value, icon }) => 
     </Box>
 );
 
-export const WeatherSummaryDetails: React.FC<{ distance: string, duration: string, avgTemp: number, avgRain: number, avgWind: number }> = ({ distance, duration, avgTemp, avgRain, avgWind }) => {
+export const WeatherSummaryDetails: React.FC<{ distance: string, avgTemp: number, avgRain: number, avgWind: number }> = ({ distance, avgTemp, avgRain, avgWind }) => {
     return (
         <Box
             sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-end',
-                flexWrap: 'wrap',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                alignItems: 'end',
                 gap: 1,
                 width: '100%',
                 paddingTop: 1,
@@ -63,11 +62,7 @@ export const WeatherSummaryDetails: React.FC<{ distance: string, duration: strin
                 icon={<DistanceIcon />}
             />
 
-            <SummaryDetail
-                label="Duration"
-                value={duration}
-                icon={<ClockIcon />}
-            />
+
             <SummaryDetail
                 label="Avg. Temp"
                 value={avgTemp.toFixed(1) + '°C'}

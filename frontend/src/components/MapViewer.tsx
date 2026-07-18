@@ -71,7 +71,12 @@ function BoundsFitter({ positions }: { positions: [number, number][] }) {
   useEffect(() => {
     if (positions.length > 0) {
       const bounds = L.latLngBounds(positions);
-      map.fitBounds(bounds, { padding: [50, 50] });
+      const isMobile = window.innerWidth <= 768;
+
+      map.fitBounds(bounds, {
+        paddingTopLeft: isMobile ? [50, 470] : [450, 50],
+        paddingBottomRight: [30, 30]
+      });
     }
   }, [map, positions]);
 

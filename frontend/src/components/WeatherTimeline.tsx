@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Box, Paper, Typography } from '@mui/material';
 import type { HourlyForecastAtOMPoint } from '../types';
 import { getWeatherCondition } from '../utils';
-import { PartlyCloudyIcon, RainyIcon, WindArrowIcon, SunIcon, CloudyIcon, DropletIcon } from './Icons';
+import { PartlyCloudyIcon, RainyIcon, WindArrowIcon, SunIcon, CloudyIcon } from './Icons';
 
 interface WeatherTimelineProps {
     weatherCards: { time: string; forecast: HourlyForecastAtOMPoint; bearing: number | null; lat: number; lng: number, uiTime: number }[];
@@ -102,8 +102,7 @@ export const WeatherCard: React.FC<{ forecast: HourlyForecastAtOMPoint, uiTime: 
                 </Box>
             </Box>
             {/* 4. Precipitation Probability / Volume Ratio */}
-            <Box sx={{ ml: -1, display: 'flex', alignItems: 'center', gap: 0.3 }}>
-                <DropletIcon />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3 }}>
                 <Typography sx={{ fontSize: '0.6rem', color: '#89bbf9ff', fontWeight: 500 }}>
                     {precipitationProbability.toFixed(0)}% {precipitation.toFixed(1)}mm
                 </Typography>

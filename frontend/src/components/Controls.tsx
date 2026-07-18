@@ -717,9 +717,9 @@ export default function Controls({
         {isCollapsed ? <ExpandLess sx={{ fontSize: 18 }} /> : <ExpandMore sx={{ fontSize: 18 }} />}
       </IconButton>
 
-      <Collapse in={!isCollapsed}>
-        <Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      <Collapse in={!isCollapsed} unmountOnExit>
+        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
               {activeTab === 0 && (
                 <Box sx={{ display: 'flex', py: 5, px: 2, flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
@@ -1033,11 +1033,24 @@ export default function Controls({
               {activeTab !== 0 && hasData && (
                 <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', px: 1.5, mb: 0.5 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', width: '100%', px: 1.5, mb: 0.5 }}>
                       <Typography variant="caption" sx={{ fontSize: '0.85em', color: '#e2e8f0', fontWeight: 600 }}>
                         {stepToHourString(timeRange[0], new Date(baseTimeMs))}
                       </Typography>
-                      <Typography variant="caption" sx={{ fontSize: '0.85em', color: '#e2e8f0', fontWeight: 600 }}>
+                      <Typography variant="caption" sx={{
+                        fontSize: '0.75em', color: '#94a3b8', fontWeight: 500, mt: 0.75,
+                        bgcolor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '12px',
+                        px: 1.5,
+                        py: 0.25,
+                        backdropFilter: 'blur(8px)',
+                        letterSpacing: '0.5px',
+                        justifySelf: 'center'
+                      }}>
+                        {durationDisplay}
+                      </Typography>
+                      <Typography variant="caption" sx={{ fontSize: '0.85em', color: '#e2e8f0', fontWeight: 600, textAlign: 'right' }}>
                         {stepToHourString(timeRange[1], new Date(baseTimeMs))}
                       </Typography>
                     </Box>
@@ -1104,7 +1117,7 @@ export default function Controls({
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
                       {currentStartData && (
                         <>
-                          <WeatherSummaryDetails distance={((data?.physics.distances[data?.physics.distances.length - 1] ?? 0) / 1000.0).toFixed(0)} duration={durationDisplay} avgTemp={currentStartData.avgTemp} avgRain={currentStartData.avgRain} avgWind={currentStartData.avgWind} />
+                          <WeatherSummaryDetails distance={((data?.physics.distances[data?.physics.distances.length - 1] ?? 0) / 1000.0).toFixed(0)} avgTemp={currentStartData.avgTemp} avgRain={currentStartData.avgRain} avgWind={currentStartData.avgWind} />
                         </>
                       )}
                     </Box>
@@ -1119,8 +1132,8 @@ export default function Controls({
             aria-label="Route Data Tabs"
             centered
             sx={{
-              width: '100%',
-              minWidth: '310px',
+              width: '320px',
+              mx: 'auto',
               minHeight: '36px',
               '& .MuiTabs-indicator': {
                 backgroundColor: '#47aad0ff'

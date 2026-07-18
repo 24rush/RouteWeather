@@ -1,5 +1,5 @@
 import React from 'react';
-import { MiniWindArrow, PartlyCloudyIcon, RainyIcon, MiniDropletIcon, PRECIP_COLOR, SunIcon, CloudyIcon } from './Icons';
+import { MiniWindArrow, PartlyCloudyIcon, RainyIcon, PRECIP_COLOR, SunIcon, CloudyIcon } from './Icons';
 
 export interface MapWaypointForecast {
     index: number;         // Checkpoint sequence (e.g. 1, 2, 3)
@@ -46,7 +46,6 @@ export const MapWeatherMarker: React.FC<{ waypoint: MapWaypointForecast }> = ({ 
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                width: '96px',
                 fontFamily: '"Outfit", sans-serif',
                 zIndex: highlighted ? 1000 : 100,
                 boxSizing: 'border-box'
@@ -59,8 +58,8 @@ export const MapWeatherMarker: React.FC<{ waypoint: MapWaypointForecast }> = ({ 
                     flexDirection: 'column',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    width: '80px',
-                    paddingTop: '14px',
+                    width: '70px',
+                    paddingTop: '16px',
                     paddingBottom: '4px',
                     boxSizing: 'border-box',
 
@@ -121,7 +120,6 @@ export const MapWeatherMarker: React.FC<{ waypoint: MapWaypointForecast }> = ({ 
 
                 {/* Precipitation Row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <MiniDropletIcon />
                     <span style={{ fontSize: '10px', fontWeight: 600, color: PRECIP_COLOR }}>{precipProb}%</span>
                     <span style={{ fontSize: '10px', fontWeight: 600, color: PRECIP_COLOR }}>{precipVolume}mm</span>
                 </div>

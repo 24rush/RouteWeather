@@ -10,6 +10,15 @@ export interface SimulationIntervalPoint {
   wpId: number;
 }
 
+interface RouteCache {
+  routePositions: [number, number][];
+  weatherPtCoords: { ptId: number, lat: number, lng: number }[];
+  totalEffectiveDist: number;
+  durations: Map<number, SimulationIntervalPoint[]>;
+}
+
+const routeCache = new WeakMap<RouteSamplingData, RouteCache>();
+
 export function simulateRideIntervals(
   routePolyline: string,
   physics: RouteSamplingData,
@@ -20,36 +29,51 @@ export function simulateRideIntervals(
     return [];
   }
 
-  const routePositions = decodePolyline(routePolyline);
-  if (routePositions.length === 0) return [];
+  let rc = routeCache.get(physics);
 
-  const pts = Object.keys(weatherPoints).map(Number).sort((a, b) => a - b);
-  const weatherPtCoords = pts.map(ptId => {
-    const ptStr = weatherPoints[ptId];
-    if (!ptStr) return { ptId, lat: 0, lng: 0 };
-    const [lat, lng] = ptStr.split(',').map(Number);
-    return { ptId, lat, lng };
-  }).filter(wp => wp.lat !== 0 || wp.lng !== 0);
+  if (!rc) {
+    const routePositions = decodePolyline(routePolyline);
+    const pts = Object.keys(weatherPoints).map(Number).sort((a, b) => a - b);
+    const weatherPtCoords = pts.map(ptId => {
+      const ptStr = weatherPoints[ptId];
+      if (!ptStr) return { ptId, lat: 0, lng: 0 };
+      const [lat, lng] = ptStr.split(',').map(Number);
+      return { ptId, lat, lng };
+    }).filter(wp => wp.lat !== 0 || wp.lng !== 0);
 
-  if (weatherPtCoords.length === 0) return [];
-
-  const segmentDist = 25;
-  const stepMs = 30 * 60 * 1000;
-
-  // Precalculate totalEffectiveDist using segmentDist = 25
-  let totalEffectiveDist = 0;
-  let tempAccDist = 0;
-  let tempPhysicsIdx = 1;
-  for (let i = 1; i < routePositions.length; i++) {
-    const midpointDist = tempAccDist + segmentDist / 2;
-    while (tempPhysicsIdx < physics.distances.length - 1 && physics.distances[tempPhysicsIdx] < midpointDist) {
-      tempPhysicsIdx++;
+    let totalEffectiveDist = 0;
+    if (routePositions.length > 0) {
+      const segmentDist = 25;
+      let tempAccDist = 0;
+      let tempPhysicsIdx = 1;
+      for (let i = 1; i < routePositions.length; i++) {
+        const midpointDist = tempAccDist + segmentDist / 2;
+        while (tempPhysicsIdx < physics.distances.length - 1 && physics.distances[tempPhysicsIdx] < midpointDist) {
+          tempPhysicsIdx++;
+        }
+        const multiplier = physics.speedMultipliers[tempPhysicsIdx] || 1.0;
+        totalEffectiveDist += segmentDist / multiplier;
+        tempAccDist += segmentDist;
+      }
+      if (totalEffectiveDist === 0) totalEffectiveDist = 1;
     }
-    const multiplier = physics.speedMultipliers[tempPhysicsIdx] || 1.0;
-    totalEffectiveDist += segmentDist / multiplier;
-    tempAccDist += segmentDist;
+
+    rc = {
+      routePositions,
+      weatherPtCoords,
+      totalEffectiveDist,
+      durations: new Map()
+    };
+    routeCache.set(physics, rc);
   }
-  if (totalEffectiveDist === 0) totalEffectiveDist = 1;
+
+  if (rc.durations.has(durationMs)) {
+    return rc.durations.get(durationMs)!;
+  }
+
+  const { routePositions, weatherPtCoords, totalEffectiveDist } = rc;
+
+  if (routePositions.length === 0 || weatherPtCoords.length === 0) return [];
 
   let physicsIdx = 1;
   let accumulatedDist = 0;
@@ -93,7 +117,8 @@ export function simulateRideIntervals(
   };
 
   addIntervalPoint(nextTargetTimeMs, 0);
-  nextTargetTimeMs += stepMs;
+  nextTargetTimeMs += 30 * 60 * 1000;
+  const segmentDist = 25;
 
   for (let i = 1; i < routePositions.length; i++) {
     const midpointDist = accumulatedDist + segmentDist / 2;
@@ -110,7 +135,7 @@ export function simulateRideIntervals(
 
     while (currentEffectiveTimeMs >= nextTargetTimeMs && nextTargetTimeMs <= durationMs) {
       addIntervalPoint(nextTargetTimeMs, i);
-      nextTargetTimeMs += stepMs;
+      nextTargetTimeMs += 30 * 60 * 1000;
     }
   }
 
@@ -118,5 +143,6 @@ export function simulateRideIntervals(
     addIntervalPoint(durationMs, routePositions.length - 1);
   }
 
+  rc.durations.set(durationMs, intervalPoints);
   return intervalPoints;
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useDeferredValue } from 'react';
 import { Box } from '@mui/material';
 import MapViewer from './components/MapViewer';
 import Controls from './components/Controls';
@@ -85,7 +85,6 @@ function App() {
     if (points.length < 2) return;
 
     // Dump GPS coordinates as requested
-    console.log("=== Drawn GPS Coordinates ===");
     console.log(JSON.stringify(points.map(p => ({ lat: p[0], lng: p[1] })), null, 2));
 
     setIsUploading(true);
@@ -142,12 +141,14 @@ function App() {
     }
   };
 
+  const deferredTimeRange = useDeferredValue(timeRange);
+
   const weatherCards = useMemo(() => {
     if (!data || !data.weatherPoints) return [];
     const pts = Object.keys(data.weatherPoints).map(Number).sort((a, b) => a - b);
     if (pts.length === 0) return [];
 
-    const [startIndex, endIndex] = timeRange;
+    const [startIndex, endIndex] = deferredTimeRange;
 
     const baseDate = getBaseDate(routeDateStr);
     let baseTimeMs = baseDate.getTime();
@@ -201,7 +202,7 @@ function App() {
         if (bearing === null && lastBearing !== null) bearing = lastBearing;
         if (bearing !== null) lastBearing = bearing;
 
-        console.log(`[Weather Card] 30m Mark: Target=${pt.targetMs / (60 * 1000)}min, PosIdx=${pt.posIdx}, Matched Weather Point ID=${pt.wpId} (${pt.lat}, ${pt.lng}), Extracted Forecast Time=${closestTimeIso}`);
+        //console.log(`[Weather Card] 30m Mark: Target=${pt.targetMs / (60 * 1000)}min, PosIdx=${pt.posIdx}, Matched Weather Point ID=${pt.wpId} (${pt.lat}, ${pt.lng}), Extracted Forecast Time=${closestTimeIso}`);
 
         cards.push({
           time: closestTimeIso,
@@ -216,7 +217,7 @@ function App() {
     }
 
     return cards;
-  }, [data, timeRange]);
+  }, [data, deferredTimeRange]);
 
   const handleLoadRoute = async (id: string, date?: string) => {
     setIsUploading(true);
