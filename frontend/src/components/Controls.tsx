@@ -4,14 +4,12 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined';
 import type { RouteScoringDetails } from '../types';
 import { decodePolyline, stepToHourString, getBaseDate, interpolateForecast } from '../utils';
 import { simulateRideIntervals } from '../simulation';
-import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, WarningAmberRounded, NavigateBefore, NavigateNext, Thermostat, WaterDrop, Air, Landscape, SwapCalls, ExpandMore, ExpandLess } from '@mui/icons-material';
+import { FileUploadOutlined, GestureOutlined, Cloud, Terrain, WarningAmberRounded, NavigateBefore, NavigateNext, Air, Landscape, SwapCalls, ExpandMore, ExpandLess } from '@mui/icons-material';
 import { api } from '../api';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceArea } from 'recharts';
 import { WeatherTimeline } from './WeatherTimeline';
 import { WeatherSummaryDetails } from './WeatherSummaryDetails';
 import { PrecipDropletIcon, ThermometerIcon } from './Icons';
-
-
 
 const RouteThumbnail = ({ polylineStr, width = 60, height = 40 }: { polylineStr?: string, width?: number, height?: number }) => {
   const points = React.useMemo(() => {
@@ -406,12 +404,10 @@ export default function Controls({
       const isActive = idx === activeSectionIndex;
       const hasAlerts = sectionWeatherData[idx]?.alerts?.length > 0;
 
-      let color = hasAlerts ? 'rgba(255, 152, 0, 0.15)' : 'rgba(76, 175, 80, 0.15)';
-      if (isActive) {
-        color = hasAlerts ? 'rgba(255, 152, 0, 0.5)' : 'rgba(76, 175, 80, 0.5)';
-      }
+      const color = hasAlerts ? 'rgb(255, 152, 0)' : 'rgb(76, 175, 80)';
+      const opacity = isActive ? 0.4 : 0.08;
 
-      return { x1, x2, color, key: idx };
+      return { x1, x2, color, opacity, key: idx };
     });
   }, [data, hasData, activeSectionIndex, sectionWeatherData]);
 
@@ -673,6 +669,42 @@ export default function Controls({
     };
   }, [hasData, data, timeRange]);
 
+  const elevationGradients = React.useMemo(() => {
+    if (elevationData.length < 2) return null;
+    const totalDist = elevationData[elevationData.length - 1].distance - elevationData[0].distance;
+    if (totalDist <= 0) return null;
+
+    const stops = [];
+    for (let i = 0; i < elevationData.length; i++) {
+      const pt = elevationData[i];
+      const offset = `${(((pt.distance - elevationData[0].distance) / totalDist) * 100).toFixed(2)}%`;
+
+      let slope = 0;
+      const window = 2;
+      const startIdx = Math.max(0, i - window);
+      const endIdx = Math.min(elevationData.length - 1, i + window);
+      const startPt = elevationData[startIdx];
+      const endPt = elevationData[endIdx];
+      if (endPt.distance > startPt.distance) {
+        slope = (endPt.elevation - startPt.elevation) / ((endPt.distance - startPt.distance) * 1000);
+      }
+
+      let color = '#9ca3af'; // Muted gray
+      if (slope > 0.05) {
+        color = '#ef4444'; // Red
+      } else if (slope > 0.02) {
+        color = '#f97316'; // Orange
+      } else if (slope > 0.005) {
+        color = '#fbbf24'; // Yellow
+      } else if (slope < -0.04) {
+        color = '#6b7280'; // Darker gray
+      }
+
+      stops.push({ offset, color });
+    }
+    return stops;
+  }, [elevationData]);
+
   /*
     const gradientStops = weatherCards.map((card, idx) => {
       const color = getWeatherColor(card.forecast, false, card.bearing, 0.8);
@@ -686,6 +718,7 @@ export default function Controls({
       elevation={4}
       sx={{
         p: isCollapsed ? 0 : 1,
+        bgcolor: 'none',
         width: isCollapsed ? 48 : '100%',
         minHeight: isCollapsed ? 48 : undefined,
         transition: 'width 0.3s ease, min-height 0.3s ease, padding 0.3s ease',
@@ -919,11 +952,27 @@ export default function Controls({
                             x1={sec.x1}
                             x2={sec.x2}
                             fill={sec.color}
-                            fillOpacity={1}
+                            fillOpacity={sec.opacity}
                             strokeOpacity={0}
                           />
                         ))}
-                        <Area type="monotone" dataKey="elevation" stroke="#2295f3ff" fill="#61b8ffff" fillOpacity={0.75} isAnimationActive={false} activeDot={false} />
+                        <defs>
+                          {elevationGradients && (
+                            <>
+                              <linearGradient id="colorElevationStroke" x1="0" y1="0" x2="1" y2="0">
+                                {elevationGradients.map((s, i) => (
+                                  <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={1} />
+                                ))}
+                              </linearGradient>
+                              <linearGradient id="colorElevationFill" x1="0" y1="0" x2="1" y2="0">
+                                {elevationGradients.map((s, i) => (
+                                  <stop key={i} offset={s.offset} stopColor={s.color} stopOpacity={0.4} />
+                                ))}
+                              </linearGradient>
+                            </>
+                          )}
+                        </defs>
+                        <Area type="monotone" dataKey="elevation" strokeWidth={2} stroke={elevationGradients ? "url(#colorElevationStroke)" : "#6fff43ff"} fill={elevationGradients ? "url(#colorElevationFill)" : "#61b8ffff"} isAnimationActive={false} activeDot={false} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </Box>
@@ -941,13 +990,28 @@ export default function Controls({
                         }
                         touchStartXRef.current = null;
                       }}
-                      sx={{ display: 'flex', alignItems: 'center', mt: 0.5, color: 'text.secondary', backgroundColor: 'background.paper', borderRadius: 1, p: 0.5 }}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        mt: 0.5,
+                        color: 'text.secondary',
+                        backgroundColor: 'rgba(25, 28, 30, 0.65)',
+                        border: '1px solid',
+                        borderColor: sectionWeatherData[activeSectionIndex]?.alerts.length > 0 ? '#ed6c02' : 'rgba(57, 212, 65, 1)',
+                        borderRadius: 1,
+                        p: 0.5
+                      }}
                     >
                       <IconButton
                         size="small"
                         onClick={() => setActiveSectionIndex(prev => Math.max(0, prev - 1))}
                         disabled={activeSectionIndex === 0}
-                        sx={{ p: 0.5, color: 'text.secondary' }}
+                        sx={{
+                          p: 0,
+                          bgcolor: 'rgba(0,0,0,0.2)',
+                          color: 'text.secondary',
+                          opacity: activeSectionIndex === 0 ? 0.4 : 1
+                        }}
                       >
                         <NavigateBefore fontSize="small" />
                       </IconButton>
@@ -961,7 +1025,7 @@ export default function Controls({
                               <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                   <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '11px' }}>
-                                    At {activeSec.startKm}km (~{activeSec.startTimeStr})
+                                    {activeSec.type} at {activeSec.startKm}km (~{activeSec.startTimeStr})
                                   </Typography>
                                 </Box>
 
@@ -996,16 +1060,13 @@ export default function Controls({
                               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', ml: 1, minWidth: 'max-content' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                                    <Thermostat sx={{ fontSize: 14 }} />
                                     <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>{activeSec.avgTemp.toFixed(1)}°C</Typography>
                                   </Box>
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                                    <WaterDrop sx={{ fontSize: 14 }} />
                                     <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>{activeSec.avgRain.toFixed(1)}mm</Typography>
                                   </Box>
                                 </Box>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                                  <Air sx={{ fontSize: 14 }} />
                                   <Typography variant="caption" sx={{ fontWeight: 700, fontSize: '11px' }}>
                                     {Math.abs(activeSec.avgWind) >= 1.0 ? (activeSec.avgWind > 0 ? `${activeSec.avgWind.toFixed(0)}km/h hw` : `${Math.abs(activeSec.avgWind).toFixed(0)}km/h tw`) : 'Neutral wind'}
                                   </Typography>
@@ -1020,7 +1081,12 @@ export default function Controls({
                         size="small"
                         onClick={() => setActiveSectionIndex(prev => Math.min(sectionWeatherData.length - 1, prev + 1))}
                         disabled={activeSectionIndex >= sectionWeatherData.length - 1}
-                        sx={{ p: 0.5, color: 'text.secondary' }}
+                        sx={{
+                          p: 0,
+                          bgcolor: 'rgba(0,0,0,0.2)',
+                          color: 'text.secondary',
+                          opacity: activeSectionIndex >= sectionWeatherData.length - 1 ? 0.4 : 1
+                        }}
                       >
                         <NavigateNext fontSize="small" />
                       </IconButton>

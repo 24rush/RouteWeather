@@ -74,8 +74,7 @@ function BoundsFitter({ positions }: { positions: [number, number][] }) {
       const isMobile = window.innerWidth <= 768;
 
       map.fitBounds(bounds, {
-        paddingTopLeft: isMobile ? [50, 470] : [450, 50],
-        paddingBottomRight: [30, 30]
+        paddingTopLeft: isMobile ? [0, 450] : [450, 50],
       });
     }
   }, [map, positions]);
@@ -272,7 +271,7 @@ export default function MapViewer({ data, weatherCards, selectedCardIndex, isDra
   return (
     <MapContainer
       center={routePositions.length > 0 ? routePositions[0] : [45, 25]}
-      zoom={4}
+      zoom={8}
       style={{ height: '100%', width: '100%', zIndex: 0 }}
       zoomControl={false}
     >
