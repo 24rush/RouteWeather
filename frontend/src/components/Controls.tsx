@@ -43,7 +43,10 @@ const RouteThumbnail = ({ polylineStr, width = 60, height = 40 }: { polylineStr?
 
   return (
     <svg width={width} height={height} style={{ flexShrink: 0, opacity: 0.7, marginLeft: 'auto' }}>
-      <path d={pathData} fill="none" stroke="#FC5200 " strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={pathData} fill="none" stroke="#FC5200 " strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+        style={{
+          filter: 'drop-shadow(0px 0px 2px rgba(249, 115, 22, 0.7))' // Adjust color/radius here
+        }} />
     </svg>
   );
 };
@@ -755,27 +758,28 @@ export default function Controls({
           <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', transition: 'min-height 0.2s ease' }}>
               {activeTab === 0 && (
-                <Box sx={{ display: 'flex', py: 5, px: 2, flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', pt: 4, pb: 2, px: 2, flexDirection: 'column', gap: 1, height: '100%', justifyContent: 'center', alignItems: 'center' }}>
                   <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                    {!isDrawingMode && (
+                      <Button
+                        component="label"
+                        variant="outlined"
+                        disabled={isUploading}
+                        startIcon={isUploading ? <CircularProgress size={20} sx={{}} /> : <FileUploadOutlined />}
+                        sx={{
+                          textTransform: 'none',
+                          borderRadius: 1,
+                          color: 'text.primary',
+                          backgroundColor: 'primary.main',
+                          '&:hover': { backgroundColor: 'primary.dark' }
+                        }}
+                      >
+                        {isUploading ? 'Uploading...' : 'Upload GPX'}
+                        <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
+                      </Button>
+                    )}
                     <Button
-                      component="label"
                       variant="outlined"
-                      disabled={isUploading || isDrawingMode}
-                      startIcon={isUploading ? <CircularProgress size={20} sx={{}} /> : <FileUploadOutlined />}
-                      sx={{
-                        textTransform: 'none',
-                        borderRadius: 1,
-                        color: 'text.primary',
-                        backgroundColor: 'primary.main',
-                        '&:hover': { backgroundColor: 'primary.dark' }
-                      }}
-                    >
-                      {isUploading ? 'Uploading...' : 'Upload GPX'}
-                      <input type="file" hidden accept=".gpx" onChange={handleFileChange} />
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color={isDrawingMode ? "secondary" : undefined}
                       onClick={() => onToggleDrawingMode(!isDrawingMode)}
                       disabled={isUploading}
                       startIcon={<GestureOutlined />}
@@ -783,8 +787,8 @@ export default function Controls({
                         textTransform: 'none',
                         borderRadius: 1,
                         color: 'text.primary',
-                        backgroundColor: isDrawingMode ? 'primary' : 'secondary',
-                        '&:hover': { backgroundColor: isDrawingMode ? undefined : 'primary.dark' }
+                        backgroundColor: 'primary.main',
+                        '&:hover': { backgroundColor: 'primary.dark' }
                       }}
                     >
                       {isDrawingMode ? 'Finish' : 'Draw Route'}
@@ -811,58 +815,69 @@ export default function Controls({
                     )}
                   </Box>
 
-                  <Box sx={{ width: '100%' }}>
-                    <Typography sx={{ pl: 0.25, mt: 1, fontSize: '0.8rem', fontWeight: 600 }}>
-                      Upcoming
-                    </Typography>
-                    <List sx={{ maxHeight: 200, overflow: 'auto', width: '100%', borderRadius: 1 }}>
+                  {!isDrawingMode && (
+                    <Box sx={{ width: '100%', mt: 1 }}>
                       {(() => {
                         const upcomingRoutes = ownerRoutes.filter(r => r.startTime && new Date(r.startTime).getTime() >= Date.now());
                         return upcomingRoutes.length === 0 ? (
-                          <Typography variant="body2" sx={{ p: 2, textAlign: 'center', color: 'text.secondary', fontSize: '0.8rem' }}>No upcoming routes found.</Typography>
+                          <Box sx={{ p: 1, textAlign: 'center', color: 'text.secondary', fontSize: '0.8rem' }}>
+                            <Typography variant="body2" sx={{ p: 1, textAlign: 'center', color: 'text.primary', fontSize: '0.9rem' }}>No upcoming routes found. </Typography>
+                            <Typography variant="body2" sx={{ textAlign: 'center', color: 'text.secondary', fontSize: '0.8rem' }}>Import a GPX file from your device or use the route drawer to plan your first ride.</Typography>
+                          </Box>
                         ) : (
-                          upcomingRoutes.map(route => {
-                            const startTimeStr = route.startTime ? new Date(route.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-                            const dateStart = new Date(route.startTime).toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' }) + ' ';
+                          <>
+                            <Typography sx={{ pl: 0.25, fontSize: '0.8rem', fontWeight: 600 }}>
+                              Upcoming events
+                            </Typography>
+                            <List sx={{ maxHeight: 200, overflow: 'auto', width: '100%', borderRadius: 1 }}>
+                              {upcomingRoutes.map(route => {
+                                const startTimeStr = route.startTime ? new Date(route.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+                                const dateStart = new Date(route.startTime).toLocaleDateString('ro-RO', { day: '2-digit', month: 'short' }) + ' ';
 
-                            const distKm = (route.distance / 1000).toFixed(1);
-                            return (
-                              <ListItem key={route.id} disablePadding sx={{}}>
-                                <ListItemButton
-                                  onClick={() => {
-                                    setSelectedOwnerRoute(route);
-                                    onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined);
-                                  }}
-                                  sx={{ bgcolor: 'background.paper', borderRadius: 1, px: 1, '&:hover': { bgcolor: 'action.hover' } }}
-                                >
-                                  <ListItemText
-                                    primary={
-                                      <Typography sx={{ fontSize: '0.8rem', color: 'text.primary', fontWeight: 600 }}>
-                                        {route.name}
-                                      </Typography>
-                                    }
-                                    secondary={
-                                      <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                                        {<>
-                                          {`${startTimeStr ? dateStart + '   ' + startTimeStr : ''} `}
-                                          {<SwapCalls sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} />} {distKm}km
-                                          {route.elevation && (<> <Landscape sx={{ fontSize: '0.9rem', verticalAlign: 'sub', ml: 1 }} /> {`${route.elevation}m`}
-                                          </>)}
-                                        </>}
-                                      </Typography>
-                                    }
-                                  />
-                                  {route.routePolyline && (
-                                    <RouteThumbnail polylineStr={route.routePolyline} />
-                                  )}
-                                </ListItemButton>
-                              </ListItem>
-                            );
-                          })
-                        )
+                                const distKm = (route.distance / 1000).toFixed(1);
+                                return (
+                                  <ListItem key={route.id} disablePadding sx={{}}>
+                                    <ListItemButton
+                                      onClick={() => {
+                                        setSelectedOwnerRoute(route);
+                                        onLoadRoute(route.id, route.startTime ? new Date(route.startTime).toISOString() : undefined);
+                                      }}
+                                      sx={{
+                                        bgcolor: 'rgba(25, 28, 30, 0.65)', borderRadius: 2, px: 1,
+                                        border: '1.5px solid', borderColor: 'rgba(255, 255, 255, 0.08)',
+                                        '&:hover': { bgcolor: 'action.hover' }
+                                      }}
+                                    >
+                                      <ListItemText
+                                        primary={
+                                          <Typography sx={{ fontSize: '0.8rem', color: 'text.primary', fontWeight: 600 }}>
+                                            {route.name}
+                                          </Typography>
+                                        }
+                                        secondary={
+                                          <Typography sx={{ fontSize: '0.75rem', color: 'text.primary' }}>
+                                            {<>
+                                              {`${startTimeStr ? dateStart + '   ' + startTimeStr : ''} `}
+                                              {<SwapCalls sx={{ fontSize: '0.9rem', verticalAlign: 'sub', color: 'text.secondary' }} />} {distKm}km
+                                              {route.elevation && (<> <Landscape sx={{ fontSize: '0.9rem', verticalAlign: 'sub', color: 'text.secondary', ml: 0.25 }} /> {`${route.elevation}m`}
+                                              </>)}
+                                            </>}
+                                          </Typography>
+                                        }
+                                      />
+                                      {route.routePolyline && (
+                                        <RouteThumbnail polylineStr={route.routePolyline} />
+                                      )}
+                                    </ListItemButton>
+                                  </ListItem>
+                                );
+                              })}
+                            </List>
+                          </>
+                        );
                       })()}
-                    </List>
-                  </Box>
+                    </Box>
+                  )}
                 </Box>
               )}
 
@@ -888,7 +903,7 @@ export default function Controls({
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}>
-                      <Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65em', color: 'text.secondary' }}>
+                      <Typography variant="caption" sx={{ fontWeight: 800, mt: 1, letterSpacing: 0.5, fontSize: '0.65em', color: 'text.secondary' }}>
                         BEST START TIME
                       </Typography>
                       {bestStartData.noOptimalTime ? (
@@ -1202,7 +1217,8 @@ export default function Controls({
               mx: 'auto',
               minHeight: '36px',
               '& .MuiTabs-indicator': {
-                backgroundColor: '#47aad0ff'
+                backgroundColor: '#47aad0ff',
+                boxShadow: '0 0 5px 1px rgba(72, 209, 255, 0.7)'
               },
               '& .MuiTab-root': {
                 minWidth: 0,
@@ -1228,6 +1244,6 @@ export default function Controls({
           </Tabs>
         </Box>
       </Collapse>
-    </Paper>
+    </Paper >
   );
 }

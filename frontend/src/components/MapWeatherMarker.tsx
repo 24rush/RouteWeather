@@ -46,7 +46,7 @@ export const MapWeatherMarker: React.FC<{ waypoint: MapWaypointForecast }> = ({ 
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                fontFamily: '"Outfit", sans-serif',
+                fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
                 zIndex: highlighted ? 1000 : 100,
                 boxSizing: 'border-box'
             }}
